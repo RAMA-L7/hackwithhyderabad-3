@@ -352,3 +352,51 @@ restated: Hindsight is memory not decider; no silent memory→evidence conversio
 decides; no invented capabilities or benchmarks; EGER background-only; no domain pre-selected.
 No application code written; no dependencies installed; no secrets added; final project
 decision untouched.
+
+---
+
+## Stage 14 — M0 runtime verification implementation (2026-09-27, branch `rama-m0`)
+
+Scope: M0 verification only. **No pipeline code was written** — the investigation pipeline, CLI,
+UI, ranking, auto-retention, analytics, `reflect()`, knowledge pages, second domain, and all
+Phase 2 features remain unbuilt. `src/debugagent/` does not exist yet. The finalized architecture
+documents were not modified.
+
+Branch discipline: all M0 work was committed on `rama-m0`, branched from `origin/main` at `1800c62`
+("Finalize Phase 1 architecture and runtime verification plan", itself pushed to `origin/main` in
+this stage's first commit). The inherited `origin/main` upstream was unset so no push could reach
+`main`. **No merge into `main` was performed.**
+
+Environment inspection (reported; nothing installed): Python 3.10.11 (Microsoft Store build) with
+pip 26.0.1 and no `py` launcher; no virtual environments present; **Docker not installed** (CLI
+absent, daemon unresponsive); none of `OPENROUTER_API_KEY`, `BASETEN_API_KEY`, `HINDSIGHT_API_KEY`,
+`HINDSIGHT_API_LLM_API_KEY`, `HINDSIGHT_URL` present; no `.env` file present; **no dependency files
+exist**, so the proposed `pyproject.toml` has no conflict to resolve.
+
+M0 scaffolding created (stdlib-only, zero installs): `.env.example` (template with empty key values;
+real `.env` git-ignored), `m0/config.py` (env loading, secret redaction), `m0/schema_validate.py`
+(dependency-free JSON-Schema subset validator, fail-closed), `m0/llm_probe.py` (RT-1…RT-8: primary
+and fallback availability, structured output + local validation, error classification, failover
+drill via unreachable base URL, auth-no-failover rule, latency calibration),
+`m0/hindsight_probe.py` (H-1…H-4E: connectivity, retain, recall, and the A–E recall/abstention
+probes), `m0/results_recorder.py` (per-test audit records), `m0/run_all.py` (runner; exit 0 pass /
+1 fail / 2 blocked), `m0/README.md` (usage + provenance checklist to confirm live).
+
+Runtime results (`m0/results/m0-results-20260927T180842Z.{json,md}`, runner exit code `2`):
+**0 PASS · 0 FAIL · 16 BLOCKED** — RT-1…RT-8 blocked on the two provider keys; H-1 blocked on no
+running Hindsight plus Docker absent; H-2…H-4E blocked on H-1. No mock or assumed result was
+recorded. One code defect found and fixed during the run: cp1252 console encoding could not print
+the `→` character (stdout reconfigured to UTF-8); the runner's exit-code contract was then
+exercised end-to-end.
+
+Credential-free checks (all run on `rama-m0` before commit): `python -m compileall m0` clean;
+offline self-check `SELFCHECK_FAILURES = 0` covering 6 validator cases (valid object accepted;
+bad-enum, missing-required, extra-property, wrong-type, and `minLength` violations all caught),
+9 status-code mappings, explicit assertions that 401/403 are **not** failover-eligible, secret
+redaction behaviour, config load reporting `configured=False` with blocking (not failing) tests,
+and the presence of all five A–E probe definitions.
+
+Consequence recorded: the two-phase plan's default "Hindsight hosting = local Docker" is not
+executable on this machine. Options (install Docker, pip/embedded server, or Hindsight Cloud) are
+left as a team decision; `docs/decision-log.md` is intentionally unchanged because no runtime result
+altered a decision.

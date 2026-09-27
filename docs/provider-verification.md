@@ -65,6 +65,68 @@ affected design knob is adjusted **in configuration**, not in workflow code.
 provisioned Baseten key, installed HTTP client, and network egress. These are the only items
 blocking the start of M0.
 
+## Runtime Results — run 2026-09-27T18:08:42Z (`m0/results/m0-results-20260927T180842Z.json`)
+
+**Outcome: 0 PASS · 0 FAIL · 16 BLOCKED.** No test executed against a live provider or a live
+Hindsight instance, because the required credentials and service are absent. Nothing is inferred
+from these rows; no mock or assumed result is recorded. Re-run with `python -m m0.run_all` once the
+blockers below are cleared. Runner exit code was `2` (blocked), as designed.
+
+| Test | Capability | Result | Blocking reason |
+|------|-----------|--------|-----------------|
+| RT-1 | Primary availability | NOT_RUN_BLOCKED | `LLM_PRIMARY_API_KEY`, `LLM_PRIMARY_BASE_URL`, `LLM_PRIMARY_MODEL` unset |
+| RT-2 | Primary structured output + local validation | NOT_RUN_BLOCKED | same as RT-1 |
+| RT-3 | Primary error classification | NOT_RUN_BLOCKED | same as RT-1 |
+| RT-4 | Fallback availability | NOT_RUN_BLOCKED | `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_BASE_URL`, `LLM_FALLBACK_MODEL` unset |
+| RT-5 | Fallback structured output + local validation | NOT_RUN_BLOCKED | same as RT-4 |
+| RT-6 | Primary → fallback routing drill | NOT_RUN_BLOCKED | fallback unrunnable (same as RT-4) |
+| RT-7 | Latency calibration | NOT_RUN_BLOCKED | no provider configured |
+| RT-8 | Auth error must not fail over | NOT_RUN_BLOCKED | primary unrunnable (same as RT-1) |
+| H-1 | Hindsight connectivity | NOT_RUN_BLOCKED | no instance (`HINDSIGHT_URL` unset) **and Docker not installed on the dev machine** |
+| H-2 | Hindsight retain | NOT_RUN_BLOCKED | requires H-1 + `hindsight-client` |
+| H-3 | Hindsight recall | NOT_RUN_BLOCKED | requires H-2 |
+| H-4A…H-4E | A–E recall/abstention probes | NOT_RUN_BLOCKED | requires H-2/H-3 and a seeded bank |
+
+### Environment inspection (same run, `D:\hackwithhyderabad-3`)
+
+| Item | Finding |
+|------|---------|
+| Python | 3.10.11 (Microsoft Store build), pip 26.0.1; no `py` launcher |
+| Virtual environments | none present in repo or `D:\` |
+| Docker | **not installed** — CLI absent, daemon not responding |
+| API-key env vars | none of `OPENROUTER_API_KEY`, `BASETEN_API_KEY`, `HINDSIGHT_API_KEY`, `HINDSIGHT_API_LLM_API_KEY`, `HINDSIGHT_URL` present |
+| `.env` files | none present |
+| Dependency-file conflicts | none — no `pyproject.toml` / `requirements*.txt` / `Pipfile` / `uv.lock` / `package.json` exists, so the proposed `pyproject.toml` has nothing to conflict with |
+| Packages installed by this stage | **none** (scaffolding is stdlib-only; nothing installed) |
+
+### Harness self-check (offline, no keys — validates tooling, not providers)
+
+Executed on branch `rama-m0`, Python 3.10.11; `python -m compileall m0` clean; self-check reported
+`SELFCHECK_FAILURES = 0`.
+
+| Check | Result |
+|-------|--------|
+| Valid hypothesis object → validator errors | `[]` (no false rejection) |
+| Invalid `relevance_state` enum | caught |
+| Missing required properties | caught (3 reported) |
+| Disallowed additional property | caught |
+| Wrong type (`string` where `array` expected) | caught |
+| Empty string violating `minLength` | caught |
+| Status → class mapping | 400 `BAD_REQUEST`, 401/403 `AUTH`, 402 `BILLING`, 404 `MODEL_NOT_FOUND`, 429 `RATE_LIMITED`, 500/502/529 `UNAVAILABLE` |
+| Failover eligibility | only 429 / 5xx / 529 eligible — **AUTH excluded** (401 and 403 asserted), satisfying the team rule before any live test |
+| Secret redaction | `<unset>` / `<set:redacted>` / `<set:redacted:len=24>` — no value ever printed |
+| Config load with no environment | all three subsystems report `configured=False` and tests block rather than run |
+| A–E probe definitions | all five present with expectations |
+
+### What these results do and do not change
+
+- **No decision changed**, so `docs/decision-log.md` is intentionally untouched by this stage.
+- One environment constraint surfaced that affects a *proposal*, not a decision: the two-phase plan's
+  default "Hindsight hosting = local Docker" is **not executable on this machine** (Docker absent).
+  Options for the team: install Docker, use the pip/embedded server, or use Hindsight Cloud. This is a
+  decision for the team, recorded here and in `docs/change-log.md`, not decided by this review.
+- U1–U7 remain unverified; RT-1…RT-8 and H-1…H-4E remain the gates for Milestone M0 completion.
+
 ## Classification summary
 
 - Verified from official provider docs: 17 facts (V1–V17).
