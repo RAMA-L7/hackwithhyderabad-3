@@ -1,6 +1,12 @@
 # Implementation Readiness Review
 
 **Status:** Review only — no application code written, no dependencies installed.
+**Status update (2026-09-27, Stage 13):** the Section 10 items on language, primary/fallback LLM,
+provider architecture, and configuration are now **resolved and logged** in
+`docs/decision-log.md`. Still open: Hindsight hosting, key provisioning, task-split confirmation,
+the pre-seeded-memory organizer rule, and all runtime provider/memory verification
+(`docs/provider-verification.md` RT-1…RT-8). The Section 18 verdict below is retained as the
+original assessment; current gating is tracked in `docs/phase1-execution-plan.md`.
 **Date:** 2026-09-27.
 **Reference:** `docs/final-project-definition.md` (selected scope),
 `docs/hindsight-capability-verification.md` (proven building blocks),

@@ -243,3 +243,112 @@ hosting, LLM key ownership, split confirmation, pre-seeded-memory rule) must be 
 recommended first task after that is the joint Hindsight spike.
 No application code written; no dependencies installed; no secrets added; final project
 decision untouched; EGER background-only.
+
+---
+
+## Stage 9 — Domain-neutral system design (2026-09-27)
+
+Scope: design-direction document only. Established the product as a domain-neutral debugging
+agent (domain = configuration/input, not architecture), with the memory/evidence/proposal/
+authorization separation, an 8-field essential memory model, three-outcome recall with explicit
+abstention, the OBSERVE→…→RETAIN lifecycle, a domain-adapter concept, a Hindsight
+`MemoryStore` abstraction limited to verified capabilities, a five-case (A–E) spike design,
+MVP boundary, extension points, risks, and architecture acceptance criteria. New document:
+`docs/domain-neutral-system-design.md`. Reviewed existing docs for contradictions: none
+blocking found — `docs/final-project-definition.md`'s "e.g. timing violations" reads as an
+example (domain still unfixed); `docs/team-task-split.md` background references are
+proposed-only and pending confirmation. No existing documents modified in this stage.
+No application code written; no dependencies installed; no secrets added; final project
+decision untouched; EGER not invoked as a dependency (no attribution in the new design).
+
+---
+
+## Stage 12 — LLM provider architecture (2026-09-27)
+
+Scope: design only. Recorded the team decision (Python; primary OpenRouter Space Bunny Alpha;
+fallback DeepSeek V4.1 Flash via Baseten) and specified a provider-independent `LLMAdapter`
+(agent talks only to the adapter; provider code isolated per adapter; model/URL/keys from
+environment, never hardcoded; switching providers touches no memory/recall/evidence/
+verification/workflow code). Documented explicit observable fallback (fail over on timeout/
+unavailable/rate-limited; auth errors raise instead; missing fallback capabilities raise rather
+than degrade silently) and structured-output preservation via validation gates. Existence
+check (web, 2026-09-27): Space Bunny Alpha exists on OpenRouter but had a recent provider-side
+outage — stability must be re-verified at build time; DeepSeek V4.1 Flash on Baseten exists
+with an OpenAI-compatible endpoint. Open verification items (structured-output modes,
+tool-calling compatibility, timeouts/limits/errors, key provisioning, retention posture)
+assigned to the spike. New document: `docs/llm-provider-architecture.md`; decision logged in
+`docs/decision-log.md`. No application code written; no dependencies installed; no secrets
+added; final project decision untouched; EGER untouched.
+
+---
+
+## Stage 13 — Phase 0 reconciliation and provider verification (2026-09-27)
+
+Scope: planning reconciliation only. Confirmed and logged the Phase 0 decisions (Python; primary
+OpenRouter Space Bunny Alpha; fallback Baseten DeepSeek V4.1 Flash; adapter/router boundary;
+env-only configuration; failover on timeout/unavailable/retry-exhaustion with no failover on auth
+errors and no silent structured-output degradation; Sept 29 MVP priority; Hindsight unaffected by
+provider choices; confirmed Phase 1 flow). Performed documentation-level verification against
+official provider docs (no API calls, no keys, no installs): 17 facts VERIFIED (endpoints, auth
+schemes, accepted parameters, response shape + cost usage, both providers' error taxonomies,
+OpenRouter `response_format` json_schema mechanism, Baseten tool-calling/structured-output/JSON-mode
+support, V4.1 Flash context 1048k / max output 32k / reasoning-on-by-default, live-configurable
+limits, `x-session-affinity`), 1 PARTIALLY VERIFIED (Space Bunny 1M context and free pricing from
+OpenRouter listings; max-output unknown), 7 NOT VERIFIED (endpoint-level structured-output support
+for the primary route, primary stability, Baseten pricing/quota, attribution headers, observed
+latency/timeouts/rate limits, practical schema conformance, retention posture). Key design
+consequence recorded: OpenRouter states structured-output support is per-endpoint and exact
+compliance is not guaranteed — therefore local schema validation is mandatory and
+`require_parameters: true` is used for routing, making the "no silent downgrade" rule concrete.
+New documents: `docs/provider-verification.md` (verification matrix + 8 runtime-test items with
+pass criteria and failure responses) and `docs/phase1-execution-plan.md` (reconciled flow,
+minimal Python implementation tree, M0–M8 sequence with exit criteria and parallelization rules,
+remaining open Phase 0 items, start gate). `docs/implementation-readiness-review.md` annotated
+with a status note (verdict superseded on the resolved items; still open: hosting, key
+provisioning, task split, pre-seed rule, runtime verification). No application code written; no
+dependencies installed; no secrets added; final project decision untouched; EGER untouched.
+
+---
+
+## Stage 10 — Architecture review (2026-09-27)
+
+Scope: implementation-oriented review of the domain-neutral design against all planning docs
+and the verified Hindsight matrix. Defined ownership boundaries (agent/Hindsight/evidence/
+engineer) with two managed overlaps (normalizer leakage via validated visible output;
+CLI rendering as trust surface with fixed templates); traced one investigation across nine
+transitions with failure handling; confirmed all 8 memory fields are consumed (timestamps/IDs
+come from Hindsight natively — no duplication); specified six recall cases incl. contradiction
+and staleness handling plus empirical abstention; fixed evidence anti-contamination rules and
+the hypothesis object shape; audited authorization (engineer-only; auto-retain wrapper
+explicitly excluded from outcome retention); mapped every application requirement to a verified
+capability with confidence + fallback (zero unresolved dependencies); judged the domain-adapter
+interface sufficient with a four-function minimum; stripped the MVP to the central hypothesis
+(`reflect()`, knowledge pages, web UI, auto-retain, analytics removed); specified a
+domain-neutral demo and behavioral evaluation without invented numbers; set a risk-first
+sequence (contract → spike → model → recall → loop → taxonomy → CLI → eval → demo).
+Final decision recorded in the review: architecture is sound; A–G verdict items listed there.
+New document: `docs/architecture-review.md`. No existing documents modified in this stage.
+No application code written; no dependencies installed; no secrets added; final project
+decision untouched; EGER not invoked anywhere in the review.
+
+---
+
+## Stage 11 — Two-phase delivery plan (2026-09-27)
+
+Scope: replanned delivery around two fixed dates without changing architecture or scope.
+Phase 1 (due Sept 29 afternoon): one complete vertical slice — intake through selective
+retention — with visible before/after memory behavior, CLI, seeds, tests, setup instructions,
+and demo video; explicit non-goals (`reflect()`, knowledge pages, web UI, auto-retain,
+analytics, second domain, hardening). Phase 2 (due Oct 2, post-submission): uncommitted
+candidate enhancements ranked after Phase 1 by feedback, effort-to-value, demo-stability risk,
+and portfolio value. Recorded: 20-section plan (`docs/two-phase-implementation-plan.md`)
+with delivery strategy, end-to-end workflow, verified-only Hindsight operations, memory model,
+demo scenario, acceptance criteria, testing strategy, submission checklist, prioritization
+criteria, risk table (8 risks incl. pre-seed rule and demo-day failure), dependency ordering,
+critical path (pre-seed answer → decisions → spike → seeds → loop → CLI → rehearsal →
+submission), and definitions of done. `docs/implementation-plan.md` annotated: Phases 0–8
+remain the work breakdown; two-phase sequencing takes precedence on conflicts. Binding rules
+restated: Hindsight is memory not decider; no silent memory→evidence conversion; engineer
+decides; no invented capabilities or benchmarks; EGER background-only; no domain pre-selected.
+No application code written; no dependencies installed; no secrets added; final project
+decision untouched.

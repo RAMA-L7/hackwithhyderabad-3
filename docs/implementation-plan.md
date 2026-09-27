@@ -1,6 +1,11 @@
 # Implementation Plan — Engineering Debugging Agent
 
 **Status:** Planning only. No application code written. Phases run in order unless noted.
+**Supersession note (2026-09-27):** delivery scheduling is now governed by
+`docs/two-phase-implementation-plan.md` (Phase 1 due Sept 29 afternoon; Phase 2 due Oct 2).
+The Phases 0–8 below remain the detailed work breakdown; where the two documents differ on
+order, the two-phase plan's risk-first sequence (contract → spike → model → recall → loop →
+taxonomy → CLI → eval → demo) takes precedence.
 **Reference:** `docs/final-project-definition.md` (what), `docs/hindsight-capability-verification.md`
 (proven building blocks), `docs/decision-log.md` (open questions Q1–Q19).
 
