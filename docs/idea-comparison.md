@@ -146,29 +146,58 @@ Ideas 1 (Engineering Debugging) and 3 (Engineering Incident) share architectural
 | **Memory Unit** | Debug case (problem → investigation → fix) | Incident case (symptoms → root cause → resolution) |
 | **Key Decision** | Investigation priority / approach selection | Root cause hypothesis / runbook selection |
 | **Verification** | Environment match (tool, PDK, corner) | Version/config match (deploy, library, config) |
-| **Demo Story** | Junior engineer solves in minutes what took senior hours | Different engineer resolves faster using team memory |
+| **Demo Story** | Focused investigation with memory guidance vs extended investigation without | Subsequent engineer resolves using team memory vs first engineer without |
 | **Time Pressure** | Low-medium (project timeline) | High (SEV-1/2, customer impact) |
 | **Data Source** | EDA reports, simulation logs, code diffs | Monitoring alerts, application logs, deploy metadata |
 
 **Shared Architecture:**
 - Structured memory schema with problem signature, environment, failed/successful approaches
-- Hindsight recall → ranked hypotheses → verification gate → retention loop
+- Hindsight recall → application-ranked hypotheses → verification gate → retention loop
+  (ranking is proposed application-level behavior; Hindsight recall capabilities to be verified)
 - Cross-case learning (adjacent paths / cross-service patterns)
 
 **Recommendation:** Keep them separate at the planning stage. The target user, workflow, data, and demo story are sufficiently different. The team should choose based on which persona and problem space they want to serve. The shared architecture means implementation patterns can transfer if the team pivots.
 
 ---
 
+## Overlap Between Deal Intelligence and Competitive Intelligence
+
+Ideas 4 (Deal Intelligence) and 5 (Competitive Intelligence) share a domain (venture capital) and persona
+(analyst/partner) but address distinct workflows:
+
+| Dimension | Deal Intelligence (Idea 4) | Competitive Intelligence (Idea 5) |
+|-----------|---------------------------|-----------------------------------|
+| **Workflow** | Deal diligence on a specific opportunity | Sector research across companies |
+| **Problem Data** | Deal signature, red flags, reference notes | Competitor sets, moat theses, sources |
+| **Memory Unit** | Deal case (diligence → decision → outcome) | Landscape case (thesis → resolution/accuracy) |
+| **Key Decision** | Diligence question priority / invest-pass-watch | Research priority / thesis weighting |
+| **Feedback Loop** | Decision resolves to outcome (raise, shutdown, exit) | Thesis resolves to accuracy (correct / incorrect + rationale) |
+| **Verification** | Current deal data (metrics, references) | Current market data (funding news, launches) |
+| **Staleness Concern** | Low (each deal is unique) | High (explicit staleness warning tied to sector clock-speed) |
+| **Demo Story** | Recalled pattern sharpens the diligence question | Resolved prior thesis corrects a blind spot |
+
+**Shared Architecture:**
+- Structured memory schema with signature, evidence references, and a resolution/outcome field
+- Hindsight recall → application-ranked candidates → verification gate → retention loop
+- Outcome/resolution updates arrive after the initial retention (closing the loop for future recall)
+
+**Recommendation:** Keep them separate at the planning stage. Diligence (Idea 4) and research
+(Idea 5) are different workflows with different memory units and verification gates, even though
+both close a decision-to-outcome loop. If the team selects the VC domain, both could plausibly
+share one memory backend later — but that is an implementation decision, not a planning one.
+
+---
+
 ## Questions for Team Discussion
 
 **Strategic Alignment**
-1. Which domain excites us more: hardware/software debugging, AI evaluation, or incident response?
-2. Which team member's background do we want to leverage more (Team 1 has VLSI + eval; Team 2 unknown)?
+1. Which domain excites us more: hardware/software debugging, AI evaluation, incident response, VC deal diligence, or competitive research?
+2. Which team member's background do we want to leverage more (Team 1 has VLSI + eval; Mukul contributed Ideas 4–5, preference TBD)?
 3. Do we want a project that showcases Team 1's unique VLSI background (differentiator) or a more generalizable domain?
 
 **Technical Execution**
 4. What is Team 2's (Mukul's) technical background and preference?
-5. Which data acquisition path is easiest: synthetic VLSI reports, curated eval sets, or public incident logs?
+5. Which data acquisition path is easiest: synthetic VLSI reports, curated eval sets, public incident logs, or synthetic deal/landscape cases?
 6. Which Hindsight API capabilities are we most confident using? (Need to verify)
 7. What's our realistic implementation capacity in hackathon timeframe?
 

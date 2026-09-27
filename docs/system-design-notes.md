@@ -244,7 +244,7 @@ flowchart TD
     end
     
     Agent -->|Structured Query| HindsightRecall[Hindsight\n(Recall)]
-    HindsightRecall -->|Ranked Memories| Recall
+    HindsightRecall -->|Recalled Memories| Recall
     Recall -->|Candidates| Reason
     Reason -->|Prioritized Actions| Verify
     Verify -->|Verified Plan| Tools[Tools / Evidence\n(Reports, Logs, Diffs, Runbooks)]

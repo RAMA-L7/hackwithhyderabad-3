@@ -75,11 +75,12 @@ Git record (from `git log`, dates in local timezone):
 
 - Repository visibility: PRIVATE (`RAMA-L7/hackwithhyderabad-3`).
 - Default branch: `main` (local `main` tracks `origin/main`).
-- Current commit: `24ef5b2` "Initialize HackwithHyderabad planning repository"
-  (plus the documentation commit below once pushed).
+- Commits so far: `24ef5b2` "Initialize HackwithHyderabad planning repository",
+  then `d2a983b` "Document project history and collaboration setup" (both pushed to `origin/main`).
 - Working tree state: clean at time of setup.
 - Remote: `origin` → `https://github.com/RAMA-L7/hackwithhyderabad-3.git`.
-- Collaboration status: invitation sent to `mukul-raii`; pending acceptance.
+- Collaboration status: `mukul-raii` accepted the invitation and has write access
+  (verified 2026-09-27; no branches or commits from Mukul yet).
   Recommended branches: `rama-planning`, `mukul-ideas`; changes via Pull Request into `main`.
 - Application code: none exists (planning-only repository).
 - Project selection: open — five candidates under evaluation, no winner declared.
@@ -90,3 +91,55 @@ Git record (from `git log`, dates in local timezone):
 - Team discussion to select the final project (see open questions in `docs/decision-log.md`).
 - Verify Hindsight API capabilities against official documentation before implementation.
 - Confirm hackathon submission rules with organizers.
+
+---
+
+## Stage 5 — Documentation consistency cleanup (2026-09-27)
+
+Scope: read-only inspection of `README.md` and all `docs/` planning files, followed by minimal
+documentation edits. No project selected. No application code created. No dependencies installed.
+
+### Files inspected
+
+- `README.md`
+- `docs/project-ideas.md`
+- `docs/idea-comparison.md`
+- `docs/demo-concepts.md`
+- `docs/decision-log.md`
+- `docs/change-log.md`
+- `docs/hackathon-requirements.md`
+- `docs/system-design-notes.md`
+- `.gitignore`, `CONTRIBUTING.md`, `docs/collaboration-workflow.md` (spot-checked)
+
+### Issues found and fixed
+
+1. `docs/demo-concepts.md` contained two sections titled "Cross-Idea Demo Requirements".
+   The second (after Idea 5) actually held the Generic-Chatbot-vs-Our-Demo comparison table.
+   Renamed it to "Demo Differentiation Checklist" (restoring the original heading); no content removed.
+2. Same table's "Demo metric" row read "Measured time / consistency / transfer", implying measured
+   results. Changed to "Proposed workflow comparison (time / consistency / transfer)".
+3. `docs/idea-comparison.md` had overlap analysis for Ideas 1↔3 but none for Ideas 4↔5.
+   Added a concise "Overlap Between Deal Intelligence and Competitive Intelligence" section
+   (workflow, memory unit, feedback loop, staleness, demo story; recommendation to keep separate).
+4. Stale discussion questions updated: Q1 now lists all five domains; Q2 notes Mukul contributed
+   Ideas 4–5 (preference TBD); Q5 now includes the synthetic deal/landscape data path.
+5. Softened residual time phrasing in the Ideas 1↔3 overlap table ("solves in minutes…")
+   to neutral workflow comparison language.
+6. Attribution hardening (no Hindsight capability invented):
+   - `docs/idea-comparison.md`: "Hindsight recall → application-ranked hypotheses" with an explicit
+     note that ranking is application-level and recall capabilities are to be verified.
+   - `docs/system-design-notes.md` (Mermaid): edge label "Ranked Memories" → "Recalled Memories".
+   - `docs/project-ideas.md` (Idea 3 architecture): "ranked hypotheses (application-level ranking)".
+
+### Issues intentionally left unresolved
+
+- Hindsight API capabilities (schema, recall/query, auth, limits) remain unverified —
+  tracked in `docs/hackathon-requirements.md` ("Verification Required Before Implementation").
+- Open questions Q1–Q19 in `docs/decision-log.md` remain for team discussion.
+- "Final Project Decision" in `docs/decision-log.md` remains empty.
+
+### Confirmations
+
+- EGER remains background inspiration only; no validated/published/required claims introduced.
+- All five ideas remain candidates; no winner declared.
+- No application code created; no dependencies installed or modified.

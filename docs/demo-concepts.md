@@ -270,7 +270,7 @@ Resolution: PENDING
 
 ---
 
-## Cross-Idea Demo Requirements
+## Demo Differentiation Checklist
 
 | Element | Generic Chatbot | Our Demo |
 |---------|----------------|----------|
@@ -280,4 +280,4 @@ Resolution: PENDING
 | Verification | None | Explicit env diff + human confirm |
 | Behavior change | "I remember you like X" | "Skip step 3 — failed last time; do step 2 first" |
 | Retention | Auto-save chat | Structured case + outcome + verification |
-| Demo metric | "Felt faster" | Measured time / consistency / transfer |
+| Demo metric | "Felt faster" | Proposed workflow comparison (time / consistency / transfer) |

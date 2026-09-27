@@ -462,7 +462,7 @@ Alert/Input → Agent
     ↓
 Hindsight Recall (symptom signature + environment)
     ↓
-Agent: ranked hypotheses + runbook steps + failed approaches
+Agent: ranked hypotheses (application-level ranking) + runbook steps + failed approaches
     ↓
 Engineer executes + verifies
     ↓
