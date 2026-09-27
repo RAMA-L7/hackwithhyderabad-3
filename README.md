@@ -88,6 +88,8 @@ Background: To be documented after discussion
 | [docs/system-design-notes.md](docs/system-design-notes.md)       | Cross-cutting architecture principles                 |
 | [docs/demo-concepts.md](docs/demo-concepts.md)                   | Demo narratives for each idea                         |
 | [docs/decision-log.md](docs/decision-log.md)                     | Structured decision tracking                          |
+| [docs/hindsight-capability-verification.md](docs/hindsight-capability-verification.md) | Verified Hindsight capabilities vs proposals |
+| [docs/project-selection-analysis.md](docs/project-selection-analysis.md) | Evidence-based analysis of the 5 candidates      |
 
 ***
 

@@ -143,3 +143,60 @@ documentation edits. No project selected. No application code created. No depend
 - EGER remains background inspiration only; no validated/published/required claims introduced.
 - All five ideas remain candidates; no winner declared.
 - No application code created; no dependencies installed or modified.
+
+---
+
+## Stage 6 — Hindsight capability verification and project-selection analysis (2026-09-27)
+
+Scope: full re-read of all planning documents, official-source verification of Hindsight
+capabilities, evidence-based analysis of all five candidates. No project selected.
+No application code created. No dependencies installed.
+
+### Documents reviewed
+
+- `README.md`, `docs/hackathon-requirements.md`, `docs/project-ideas.md`,
+  `docs/idea-comparison.md`, `docs/system-design-notes.md`, `docs/demo-concepts.md`,
+  `docs/decision-log.md`, `docs/change-log.md`, `CONTRIBUTING.md`,
+  `docs/collaboration-workflow.md`.
+
+### Official sources reviewed
+
+- https://hindsight.vectorize.io/ (Overview, v0.10 docs)
+- https://hindsight.vectorize.io/developer/api/recall
+- https://hindsight.vectorize.io/developer/api/memories
+- https://github.com/vectorize-io/hindsight (README)
+
+### Capabilities verified (selection)
+
+retain/write with LLM extraction; 4-arm recall (semantic, BM25 keyword, graph, temporal) with
+RRF + cross-encoder reranking and score outputs; `types` filtering; tag scoping (`tags_match`,
+`tag_groups`); custom metadata + context labels; observations with provenance and
+`prefer_observations`/`source_facts`; memory curation (PATCH edit/invalidate/restore, history);
+contradiction reconciliation via consolidation; strict bank isolation; bank mission/directives/
+disposition + `reflect()`; mental models/knowledge pages; Python/TypeScript/Go/CLI/MCP clients;
+LangGraph/CrewAI/Vercel integrations; LLM wrapper; Docker/K8s/pip/embedded/Cloud deployment
+(incl. Windows); webhooks; Memory Defense redaction. Full matrix in
+`docs/hindsight-capability-verification.md`.
+
+### Capabilities not verified (still unknown)
+
+Rigid custom domain schemas; native TTL/expiry; server auth model; numeric rate limits; retain
+idempotency/batching; list pagination details; export API; full audit logging. Design consequence:
+schemas, ranking, staleness, and thresholds stay application-level — which removes (not adds)
+dependency risk. No idea is blocked on an unverified capability under this reading.
+
+### Five ideas analyzed
+
+Per-idea analysis (workflow, memory unit, Hindsight dependency, complexity, data, demo,
+evaluation, risks, unknowns, evidence needed) plus a neutral cross-idea table in
+`docs/project-selection-analysis.md`. Shortlist for deeper discussion (not winners):
+Ideas 3, 1, and 4, each with stated reasoning and reversible held-back notes on Ideas 5 and 2.
+Biggest decision risks recorded: hosting/LLM-key model, pre-seeded-memory policy, Mukul's
+preference, VC seed realism, eval/UI effort risks, unverified auth/limits.
+
+### Confirmations
+
+- No final project selected; "Final Project Decision" in `docs/decision-log.md` untouched.
+- No application code created; no dependencies installed; no secrets introduced.
+- No fabricated metrics; no Hindsight capabilities invented; EGER background-only.
+- `README.md` Documentation Index extended with the two new analysis documents only.
