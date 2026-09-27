@@ -1,0 +1,72 @@
+# HackwithHyderabad 3.0 - Pre-Planning Repository
+# .gitignore for planning docs only (no implementation yet)
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Environment / Secrets (never commit these)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.token
+secrets/
+credentials/
+.envrc
+
+# Python / Node / Build (for future implementation)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+build/
+*.egg-info/
+.pip-cache/
+
+# Logs / Data
+*.log
+logs/
+data/
+*.sqlite
+*.db
+
+# IDE / OS specific
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Documentation builds (if using Sphinx/MkDocs later)
+docs/_build/
+site/
+
+# Keep planning docs!
+# docs/*.md - TRACKED
+# README.md - TRACKED
+# decision-log.md - TRACKED
