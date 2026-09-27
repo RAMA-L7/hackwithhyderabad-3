@@ -140,3 +140,12 @@ Simple conversation-history retrieval is insufficient for demonstrating meaningf
 - Changes are reviewed through Pull Requests before merging.
 - Planning decisions are recorded in [docs/decision-log.md](docs/decision-log.md).
 - Workflow details: [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/collaboration-workflow.md](docs/collaboration-workflow.md).
+
+---
+
+## Change Tracking
+
+- Significant changes are recorded in [docs/change-log.md](docs/change-log.md).
+- Architectural decisions are recorded in [docs/decision-log.md](docs/decision-log.md).
+- Git history (`git log`) is the authoritative technical change record.
+- Commit planning changes logically with clear messages.
