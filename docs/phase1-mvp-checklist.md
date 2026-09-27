@@ -42,6 +42,12 @@ to run the demo loop. Adding any of these requires a joint decision-log entry.
 
 ## 4. Definition of Done (objective, no invented numbers)
 
+**Note (2026-09-28):** these are end-to-end items and none can be ticked yet, because the Mukul-owned
+pipeline, `llm/` and CLI do not exist. The memory-layer prerequisites behind items 2, 3, 4 and 8
+(seeding + idempotency, recall with original conditions, contradiction surfacing, retention
+validation) are implemented and live-verified at `rama-m0` `6f60af1`; the remaining work on those
+items is the pipeline and the CLI that consume them. See `docs/handoff-mukul-memory.md`.
+
 - [ ] Fresh setup works from README on a clean checkout.
 - [ ] Seed cases load successfully and idempotently.
 - [ ] A relevant historical case is recalled for a similar new issue, with its original conditions shown.
@@ -80,7 +86,8 @@ integration are the long poles; protect them by not starting CLI polish before s
 
 | Risk | Signal | Response |
 |------|--------|----------|
-| Abstention too eager/lax | H-4A/C/E behaviour drifts as seeds grow | re-calibrate `min_final_score` from recorded scores |
+| Abstention too eager/lax | H-4A/C/E behaviour drifts as seeds grow | **Already observed, not hypothetical:** with 26+ near-identical cases a real match fell to `final` 0.003 while `semantic` held 0.78. Calibrate **all** thresholds against the final seed bank (C2). Do not reach for a single number |
+| Threshold narrated as a hard truth | any doc, comment or demo line quotes 0.05 / 0.70 as validated | they are provisional defaults; correct the narration (`docs/m1-freeze-decisions.md` §C2.2) |
 | Latency in the demo | > ~15 s per interaction | cut LLM calls to one per step; shorten prompts |
 | Citation drift | hypothesis cites unknown case ids | contract test T3 fails the build |
 | Auto-accept creep | resolution recorded without decision | contract test T4/T5 |

@@ -569,3 +569,62 @@ Ambiguities and the smallest reversible choice for each are recorded in
 than a curated taxonomy and therefore cannot detect paraphrase-level disagreement.
 
 No `.env` change, no commit or push of `.env`, `main` and `origin/main` untouched.
+
+## Stage 19 - Documentation updated from M1 evidence; C2 reshaped; Mukul handoff (2026-09-28)
+
+Documentation only. No behaviour change, no new feature, no Phase 2 scope (no MCP, web UI,
+analytics, `reflect()`, knowledge pages). Implementation at `6f60af1` is unchanged.
+
+**C2 no longer freezes a number.** `docs/m1-freeze-decisions.md` §C2 was rewritten from "the initial
+`min_final_score` value" to "the abstention policy *shape*". Frozen: app-side abstention; `final`
+decides ordering and is the primary acceptance signal; `semantic` is acceptance-only and never
+ordering; the semantic fallback is mandatory; a floor yields a candidate, never a verified fact;
+contradictions are surfaced and never silently resolved; agreement is not conflict; every abstention
+carries `top_score` / `threshold_used` / `reason`; all thresholds are configuration. Explicitly not
+frozen: every numeric value. A new checklist item makes the calibration pass against the final seed
+bank a tracked, blocking task.
+
+Each threshold is now labelled by evidence tier, and the three tiers are defined once in both
+`m1-freeze-decisions.md` and `m1-contract.md`: **observed** (reproducible measurement),
+**provisional default** (implementer choice, unvalidated), **final calibrated** (does not exist yet).
+`min_final_score 0.05`, `semantic_floor 0.70`, `weak_reference_floor 0.6`,
+`contradiction_margin 0.2` and `stale_after_days 365` are recorded as provisional defaults and are
+nowhere presented as validated production thresholds.
+
+Contract rule 3 was rewritten to state the two-signal rule and the measured reason for it. Rule 4
+was extended with the multi-row finding, and a new rule 9 states that contradiction detection keys
+on (service, `root_cause_key`). A new normative §5 "Known Limitations of the Implemented Memory
+Layer" records seven limitations with their impact: L1 curation non-functional on the installed SDK,
+L2 derived `root_cause_key`, L3 paraphrase blind spot, L4 uncalibrated thresholds, L5 thresholds split
+across two configuration surfaces, L6 isolated tests under-reported risk, L7 local single-writer
+ledger. §5 is evidence, not contract, and is labelled as such in the status header.
+
+**Two facts established during this review, both now documented rather than assumed:**
+
+1. `hindsight-client 0.10.1` exposes **no** memory-curation method. `update_memory` does not exist
+   and the adapter's `update()` / `invalidate()` raise `AttributeError` against a real client, passing
+   only against the test fake. This is not a contradiction of M0, which verified curation at the
+   product level via REST and UI: the capability exists, the Python binding does not. Recorded as L1
+   and in the implementation note; not fixed, since that is Phase 2 work requiring the REST API or an
+   SDK upgrade.
+2. `semantic_floor = 0.70` does **not** separate the M0 vague class from relevant. Observed M0
+   `semantic`: relevant 0.867 / 0.884 / 0.802, vague 0.766, irrelevant 0.584 / 0.505 / 0.475. A floor
+   of 0.70 admits the vague case, so the vague → `partial` behaviour currently depends on
+   `score_final`. Recorded as an open calibration question in §C2.3 and as a checklist item, not
+   hidden and not papered over.
+
+`docs/handoff-mukul-memory.md` is new. It covers what the layer provides, the exact Protocol and
+signatures to consume, recall-result structure, how to read relevance and abstention, provenance,
+contradiction surfacing, the seven things Mukul must not assume about Hindsight scores, the exact
+`MemoryCase` field contract to send in, what the layer does not decide, and his integration points.
+Its first section is the trust rule — MEMORY informs, EVIDENCE verifies, AGENT proposes, ENGINEER
+decides — with an explicit prohibition on treating a recalled memory as current evidence or letting
+one satisfy a verification precondition. It also flags that `semantic_floor` and
+`contradiction_margin` are constructor-only, so Mukul tuning by environment alone will not reach them.
+
+The freeze checklist was updated to the new legend (`[~]` implemented-but-unverified, `[!]` known
+limitation), marked the memory-layer items, marked T1/T2 as implemented and T3-T6 as blocked on
+Mukul's code, and added a handoff-readiness section. Documentation was changed to describe what the
+code does, not what it was intended to do.
+
+No `.env` change. `main` and `origin/main` untouched.

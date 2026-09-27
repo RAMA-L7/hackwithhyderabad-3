@@ -1,7 +1,19 @@
 # Phase 1 Team Interface & Ownership
 
 **Status:** Proposed split for joint confirmation. Not a unilateral assignment.
-**Date:** 2026-09-27. **Reference:** `docs/m1-contract.md` (the contract both sides code against).
+**Date:** 2026-09-27 · **Revised:** 2026-09-28 (Rama's memory column is now implemented; see
+`docs/handoff-mukul-memory.md` for what Mukul consumes).
+**Reference:** `docs/m1-contract.md` (the contract both sides code against).
+
+## 0. Implementation status of each side
+
+| Side | Status |
+|---|---|
+| **Rama — memory layer** | **Implemented and tested** at `rama-m0` `6f60af1`: 78 tests, 7 live against Hindsight Cloud. Known limitations in `docs/m1-contract.md` §5 |
+| **Mukul — pipeline, `llm/`, CLI** | **Not started.** Sections 2–3 below are still declarations, not implementations |
+| **Shared — `schemas.py`** | Partially implemented: the memory schemas exist; `Evidence`, `Hypothesis`, `VerificationResult`, `Resolution`, `DebugInput`, `NormalizedDebugCase` are not written yet |
+
+Nothing in this document may be read as claiming the Mukul side exists.
 
 ## 1. Ownership
 
@@ -20,7 +32,7 @@
 | `schemas.py` | **shared, jointly frozen** | the coupling point — changes require both |
 | `tests/contract/`, `tests/e2e/`, demo, submission | shared | integration and acceptance |
 
-## 2. Python-Level Boundaries (declarations, not implementations)
+## 2. Python-Level Boundaries (Rama's section is implemented; the rest are declarations)
 
 ```python
 # ---- shared/frozen by both in M1 ----
@@ -95,7 +107,7 @@ Mukul: investigate()
 | # | Item | Why it matters |
 |---|------|----------------|
 | C1 | `llm/` ownership (proposed Mukul) | Only consumer is hypothesis generation; Mukul is the natural owner, but it is infrastructure |
-| C2 | Initial `min_final_score` | Affects both matching (Rama) and CLI messaging (Mukul) |
+| C2 | Abstention policy **shape** (frozen) — threshold *values* deferred to calibration against the final seed bank | Affects both matching (Rama) and CLI messaging (Mukul) |
 | C3 | Seed domain family | Rama authors seeds; Mukul's normalizer must parse the same vocabulary |
 | C4 | CLI labels | Must match the four-layer presentation the demo depends on |
 | C5 | `observed_evidence` shape | Affects seed authoring and rendering |

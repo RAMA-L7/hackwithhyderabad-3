@@ -64,15 +64,34 @@ one changed the implementation. Each is pinned by a test.
    on a real match. Found only because the live bank was dirty. Grouping is now by
    (service, root_cause_key).
 
+4. **The installed Python SDK has no memory-curation method at all.** `hindsight-client 0.10.1`
+   exposes no `update_memory`; the adapter's `update()` / `invalidate()` raise `AttributeError`
+   against a real client and pass only against the test fake. Note this is *not* a contradiction of
+   M0: `docs/hindsight-capability-verification.md` verified curation (edit / invalidate / restore)
+   at the **product** level via REST and UI. The capability exists; the Python binding for it does
+   not. Not fixed here — that is Phase 2 work and would need the REST API or an SDK upgrade.
+
+## Two things the thresholds do not do (recorded, not fixed)
+
+- **`semantic_floor = 0.70` does not separate the M0 vague class.** Observed M0 `semantic`: relevant
+  0.867 / 0.884 / 0.802, vague 0.766, irrelevant 0.584 / 0.505 / 0.475. A floor of 0.70 sits between
+  irrelevant and *everything else*, so the vague case clears it and would be classed `relevant`.
+  The vague → `partial` behaviour currently depends on `score_final`. Whether `semantic` can carry
+  that boundary at all is an open calibration question.
+- **Thresholds live in two places.** `min_final_score`, `weak_reference_floor`,
+  `stale_after_days` and `max_tokens` are env-driven through `MemoryConfig`; `semantic_floor` and
+  `contradiction_margin` are constructor-only on `AbstentionPolicy`. A consumer tuning by
+  environment alone cannot reach the fallback or the margin. Worth unifying before calibration.
+
 ## Consequences for the frozen decisions
 
-- **C2 (abstention threshold) is not safe to freeze as a single number.** The measured evidence
-  says one absolute `final` threshold does not hold across bank sizes. The recommendation in
-  `m1-freeze-decisions.md` should be amended to freeze the *policy shape* (floor plus semantic
-  fallback plus margin) and defer the numeric values until seed volume is final. This note does
-  not change the decision doc unilaterally; it flags it for the team.
-- `update()` / `invalidate()` remain unverified against the real client and are out of the MVP
-  path (already deferred to Phase 2 in the contract). No claim is made that they work.
+- **C2 is no longer "freeze a number".** M0 itself recorded that "absolute scores are documented as
+  non-calibrated, so a fixed numeric threshold is unsafe", and M1 live testing confirmed it. The
+  decision doc was updated on 2026-09-28: the **policy shape** is frozen, all values stay
+  configurable, and calibration against the final Phase 1 seed bank is a tracked task.
+- `update()` / `invalidate()` are non-functional on the installed SDK (finding 4) and are outside
+  the MVP path, consistent with the contract deferring them to Phase 2. No claim is made that they
+  work.
 
 ## What is deliberately absent
 
