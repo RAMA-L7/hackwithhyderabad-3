@@ -224,3 +224,22 @@ preference, VC seed realism, eval/UI effort risks, unverified auth/limits.
   architecture sign-off → phased implementation per `docs/implementation-plan.md`.
 - **Unchanged:** EGER remains background inspiration only; no validation claims. All prior stage
   records preserved.
+
+---
+
+## Stage 8 — Implementation readiness review (2026-09-27)
+
+Scope: readiness review of the selected Engineering Debugging Agent before any code.
+Reconstructed final requirements, MVP workflow, system boundary, agent loop, minimum memory
+unit (8 necessary fields; lessons-text and blobs deferred), minimum evidence model
+(engineer-supplied, deterministic), memory/evidence/proposal/authorization separation,
+Hindsight integration restricted to verified capabilities, first demo scenario (reuses the
+documented hold-causes-setup-pessimism narrative, no new numbers), technical decisions
+triaged (5 must-decide-now, 5 deferrable, 7 not-for-MVP), workstream dependencies, phased
+sequence with an added interface-contract checkpoint, per-phase acceptance criteria, risks,
+and documentation notes. New document: `docs/implementation-readiness-review.md`.
+Verdict recorded there: **NOT READY TO IMPLEMENT** — five Phase 0 decisions (language,
+hosting, LLM key ownership, split confirmation, pre-seeded-memory rule) must be logged first;
+recommended first task after that is the joint Hindsight spike.
+No application code written; no dependencies installed; no secrets added; final project
+decision untouched; EGER background-only.

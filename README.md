@@ -98,6 +98,7 @@ Background: To be documented after discussion
 | [docs/final-project-definition.md](docs/final-project-definition.md) | Selected project: problem, workflow, memory, MVP |
 | [docs/implementation-plan.md](docs/implementation-plan.md)           | Phased build plan (no code yet)                  |
 | [docs/team-task-split.md](docs/team-task-split.md)                   | Proposed Rama/Mukul task split                   |
+| [docs/implementation-readiness-review.md](docs/implementation-readiness-review.md) | Readiness verdict + unblock list (no code yet) |
 
 ***
 
