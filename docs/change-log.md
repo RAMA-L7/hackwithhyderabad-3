@@ -437,3 +437,135 @@ application pipeline code exists — M0 remains verification-only.
 
 `docs/decision-log.md` updated with the two decisions that genuine runtime results changed (hosting ?
 Cloud, and primary structured-output handling).
+---
+
+## Stage 16 — M1 implementation contract handoff (2026-09-27, branch `rama-m0`)
+
+Scope: planning and contract-freeze preparation only. **No application implementation has started** —
+`src/debugagent/` does not exist. No dependencies installed, no secrets exposed, `main` untouched,
+nothing committed in this stage (working tree only, pending explicit instruction).
+
+Inputs re-read before writing: `docs/domain-neutral-system-design.md`, `docs/architecture-review.md`,
+`docs/phase1-execution-plan.md`, `docs/provider-verification.md` (M0 final run), and the M0 harness
+results. Four new documents produced:
+
+- `docs/m1-contract.md` — per-component contracts (input, normalizer, MemoryStore, recall/matching,
+  hypothesis, evidence, verification, resolution, retention, CLI) with input/output/required/optional/
+  errors/ownership/prohibitions, plus the 10 minimum Phase 1 schemas. The 8 essential memory fields
+  remain represented and Hindsight-native timestamps/ids are explicitly not duplicated.
+  M0 evidence is baked in as binding rules: local structured-output validation is the only guarantee,
+  failover on timeout/429/5xx only (never 400/401/402/403/404), provisional abstention bands derived
+  from observed scores, recall volume requiring app-side filtering, and a one-LLM-call-per-step
+  latency budget.
+- `docs/phase1-team-interface.md` — proposed ownership (Rama: memory layer, schema, seeds, matching,
+  abstention, retention storage; Mukul: normalization, LLM layer, hypothesis, evidence, verification,
+  resolution, CLI; shared: schemas, contract tests, e2e, demo), the Python-level boundary declarations,
+  the integration seam, six contract tests, and five items requiring joint confirmation (C1–C5).
+- `docs/phase1-mvp-checklist.md` — required path and components, explicit scope exclusions, objective
+  definition of done (functional, no invented numbers), tomorrow's dependency-ordered start sequence,
+  and a Phase 1 risk watch list.
+- `docs/phase1-demo-scenario.md` — one frozen before/after demo in a single domain (service/API runtime
+  failures, the M0 probe family), with the rules that no performance numbers may be claimed and that
+  a visible primary?fallback is a feature, not a failure.
+
+Architecture conflict check: none found. The contracts implement the already-approved
+domain-neutral design; no architecture document was modified. The one genuinely new item is C1
+(`llm/` ownership), which is unassigned in the proposed split and is flagged for joint confirmation
+rather than decided here.
+---
+
+## Stage 17 — M1 contract review and corrections (2026-09-27, branch `rama-m0`)
+
+Scope: documentation review and corrections only. **No application implementation**, no dependency
+installs, no `.env` change, no commit or push in this stage.
+
+New documents: `docs/m1-freeze-decisions.md` (the five joint decisions C1–C5 with proposal, rationale,
+recommended default, and consequences of the alternative, plus two low-controversy technical items
+C6/C7) and `docs/m1-contract-freeze-checklist.md` (12-section freeze checklist covering schemas,
+MemoryStore, LLMAdapter, pipeline interfaces, error behaviour, abstention, retention ownership,
+evidence/proposal/decision separation, CLI trust surface, contract tests T1–T6, and parallel-work
+safety).
+
+Genuine corrections applied to `docs/m1-contract.md`, each from an actual defect found in review:
+
+1. **Latency / internal contradiction.** §2.2 allowed an LLM-assisted normalizer, which would have
+   doubled LLM calls per interaction and contradicted the "one call per step" budget. Normalizer is now
+   **deterministic only** in Phase 1; the single LLM call per interaction is hypothesis generation.
+2. **Unverified capability in the critical path.** §4.4 relied on `min_scores` for filtering, but M0
+   never exercised it (probes used `types` + `max_tokens`). Abstention is now required to be computed
+   in `classify_candidates` from returned scores; `min_scores` is an optional pass-through marked
+   unverified.
+3. **Memory-as-evidence path.** §2.7 now carries an explicit prohibition: preconditions are checked
+   against `Evidence` only; recalled environment/root_cause may be displayed and may populate
+   `mismatched_environment_fields` but must never satisfy a precondition or upgrade a status; missing
+   Evidence yields `insufficient_evidence` regardless of memory.
+4. **Ambiguous retention ownership** ("Rama storage + validation, Mukul decision to attempt") is now
+   split precisely: Mukul owns the call site (only after `engineer_decision`), Rama owns validation,
+   idempotency and the write, and Rama alone sets `retained`.
+5. **Silent-fallback visibility.** Hypothesis output now carries `provider`/`model`/`fallback_used`, and
+   the CLI trust surface must render them in the PROPOSAL header.
+6. **Scope tightening.** `MemoryStore.update()` / `invalidate()` are declared but deferred to Phase 2;
+   the MVP path corrects or retires nothing.
+7. **Overclaim corrected.** Memory Defense: M0 confirmed the configuration call returns without error
+   but did not verify active redaction, so the contract no longer treats it as a proven secret guardrail.
+8. **CLI section.** Command names marked provisional pending C4; explicit trust-surface requirements
+   added (four separated sections, provider/fallback header, case id + original environment, decision
+   shown, never style a hypothesis as verified).
+
+Review of the four audit areas requested found no duplicate implementation responsibility beyond the
+retention seam (now frozen), no interface forcing cross-layer coupling, no path allowing retention
+before verification, no silent fallback or silent structured-output degradation, and no unnecessary
+Phase 1 features after item 6. Architecture documents were not modified; the domain-neutral design
+remains the single source of truth.
+## Stage 18 - Rama memory and Hindsight layer implemented and tested live (2026-09-28)
+
+Rama-side implementation only. No Mukul-area code: no LLM adapter, normalizer, evidence,
+verification, resolution, or CLI.
+
+Added `pyproject.toml` and the `src/debugagent` package: `config.py` (env-driven `MemoryConfig`,
+no secret defaults), `schemas.py` (frozen eight-field `MemoryCase` plus `RecallResult`,
+`RecallSet`, `MatchReport`, `AbstentionDecision`, `RetentionDecision`), `memory/store.py` (the
+`MemoryStore` Protocol and `MemorySchemaError`), `memory/hindsight_store.py` (Hindsight Cloud
+adapter, structured metadata, tags, content rendering, local idempotency ledger, recall dedup),
+`memory/matching.py` (deterministic query normalisation, relevance bands, abstention, staleness,
+contradiction surfacing, provenance), and `seeds/` (six synthetic service/API runtime-failure
+cases plus a deterministic loader that reports inserted/skipped/rejected).
+
+`update()` and `invalidate()` are implemented against the client surface and are explicitly
+unverified against the live backend; they stay out of the MVP path, consistent with the contract.
+
+Test suite: 78 tests, all passing. 71 deterministic offline tests (schema, matching, store
+against a fake backend, seed loader) and 7 live tests against Hindsight Cloud
+(`tests/test_integration_hindsight.py`, skipped when `HINDSIGHT_URL` is unset). Live verification
+covered retain, duplicate retain, recall with provenance, irrelevant-query abstention,
+relevant-query acceptance, and input rejection before network. The seed loader was run live
+twice against one bank: 6 inserted, then 0 inserted and 6 skipped, so idempotency is confirmed
+against the real service rather than only against a fake.
+
+Three backend behaviours were measured live that the M0 documentation does not describe. Each
+one broke a working-looking implementation and is now pinned by a test:
+
+1. `final` is query-relative and collapses as a bank fills. With 26+ near-identical retained
+   cases a genuine match scored `final` 0.003 while `semantic` stayed 0.78, so an absolute floor
+   on `final` alone silently dropped real matches. `effective_score()` now falls back to
+   `semantic` when `final` is below floor, used only as an acceptance signal and never to order
+   results. Observed separation: relevant `semantic` ~0.78-0.81, irrelevant ~0.52.
+2. Recall returns multiple rows per stored memory: 6 retained cases produced 35 rows with
+   differing chunk text and scores. `dedupe_by_case()` keeps the best row per `case_key` so
+   provenance is one entry per case.
+3. Contradiction grouping by service alone is a false-positive machine: 32 cases that all agreed
+   on one root cause were flagged as disagreeing and abstained on a real match. Grouping is now
+   keyed on (service, root_cause_key), so agreement is corroboration and only genuinely different
+   root causes conflict.
+
+Consequence flagged, not silently applied: C2 in `docs/m1-freeze-decisions.md` recommends
+freezing a single abstention threshold. Finding 1 shows one absolute `final` threshold does not
+hold across bank sizes, so the recommendation should freeze the policy shape (floor plus semantic
+fallback plus contradiction margin) and defer the numeric values until seed volume is final. The
+decision document was not edited unilaterally.
+
+Ambiguities and the smallest reversible choice for each are recorded in
+`docs/implementation-note-rama-memory.md`, including that `root_cause_key` is derived text rather
+than a curated taxonomy and therefore cannot detect paraphrase-level disagreement.
+
+No `.env` change, no commit or push of `.env`, `main` and `origin/main` untouched.
