@@ -147,14 +147,35 @@
 
 ## Final Project Decision
 
-**Date Decided:**
-**Selected Idea:**
-**Decision Makers:**
+**Date Decided:** 2026-09-27
+**Selected Idea:** Idea 1 — Engineering Debugging Agent with persistent memory using Hindsight
+**Decision Makers:** Rama Krishna Ketha, Mukul Rai (joint team decision; do not change unless
+both members explicitly agree)
 **Rationale:**
-**MVP Scope Agreed:**
-**Implementation Owner Split:**
-**Demo Concept Agreed:**
-**Content Plan:**
+- Strongest team-domain fit: Rama's VLSI/engineering-debugging background directly supports
+  realistic seed-case authorship.
+- Clear, narrow workflow (one debugging workflow, one engineer persona) with a visible
+  before/after memory demonstration.
+- Core loop (retain debug cases → recall by signature + tags → verify against current
+  environment → retain outcome) maps to verified Hindsight capabilities; no dependency on
+  unverified capabilities once the case schema is treated as an application-level convention.
+- MVP requires no live EDA tool integration (pre-seeded structured cases).
+- Ideas 2 (AI Evaluation), 3 (Engineering Incident), 4 (Deal Intelligence), and 5 (Competitive
+  Intelligence) were considered but not selected; their analyses are preserved in
+  `docs/project-selection-analysis.md` and `docs/idea-comparison.md` for reference.
+**Hindsight role:** Persistent memory is a core architectural requirement, not an add-on.
+**EGER boundary:** EGER is Rama's personal research and remains background design inspiration
+only. This project does not validate EGER, does not depend on EGER, and EGER is not a
+hackathon requirement.
+**MVP Scope Agreed:** See `docs/final-project-definition.md` (MVP Scope) and
+`docs/implementation-plan.md`. Single debugging workflow, single persona, single memory loop,
+pre-seeded cases, CLI-first interface.
+**Implementation Owner Split:** Proposed only — see `docs/team-task-split.md`. To be confirmed
+by both members before implementation starts.
+**Demo Concept Agreed:** Before/after memory demonstration per `docs/final-project-definition.md`
+(Demo Story); no numerical improvement claims.
+**Content Plan:** Per hackathon requirements (1 technical article + 1 social post per member,
+1 team demo video). Topics to be chosen after MVP scope is built; no content drafted yet.
 
 ---
 

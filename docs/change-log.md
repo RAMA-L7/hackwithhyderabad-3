@@ -200,3 +200,27 @@ preference, VC seed realism, eval/UI effort risks, unverified auth/limits.
 - No application code created; no dependencies installed; no secrets introduced.
 - No fabricated metrics; no Hindsight capabilities invented; EGER background-only.
 - `README.md` Documentation Index extended with the two new analysis documents only.
+
+---
+
+## Stage 7 — Final project selection: Engineering Debugging Agent (2026-09-27)
+
+- **Selection decision:** Idea 1 — Engineering Debugging Agent with persistent memory using Hindsight.
+  Recorded in `docs/decision-log.md` ("Final Project Decision"). Ideas 2, 3, 4, and 5 were
+  considered but not selected; their analyses are preserved for reference.
+- **Team members involved:** Rama Krishna Ketha and Mukul Rai (joint decision; changeable only by
+  explicit agreement of both members).
+- **Key selection reasoning:** strongest team-domain fit (Rama's engineering-debugging background
+  supports realistic seed cases); narrow single-workflow/single-persona MVP with a visible
+  before/after memory demonstration; core loop maps to verified Hindsight capabilities with the
+  case schema as an application-level convention; no live EDA tool integration required for MVP.
+- **New planning documents:** `docs/final-project-definition.md` (problem, persona, workflow, memory
+  unit, Hindsight integration per verified capabilities, MVP scope, demo story, evaluation plan,
+  success criteria), `docs/implementation-plan.md` (phased plan, no code), `docs/team-task-split.md`
+  (proposed split only, to be confirmed by both members).
+- **Application implementation has not started.** No source files, dependencies, or secrets added.
+  This stage is architecture and implementation planning only.
+- **Next planned phase:** confirm task split → Hindsight spike (local setup + seed retain/recall) →
+  architecture sign-off → phased implementation per `docs/implementation-plan.md`.
+- **Unchanged:** EGER remains background inspiration only; no validation claims. All prior stage
+  records preserved.

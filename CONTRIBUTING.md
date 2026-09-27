@@ -18,7 +18,7 @@
 ## Planning discipline
 
 - Record project decisions in `docs/decision-log.md`.
-- Keep comparisons neutral — no winner until the team decides together.
+- Project direction is decided (Engineering Debugging Agent); record any change proposal in `docs/decision-log.md` for joint agreement — do not unilaterally rescope.
 - Separate hypotheses and proposed metrics from measured results.
 
 ## Secrets

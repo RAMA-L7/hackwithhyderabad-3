@@ -1,4 +1,4 @@
-# Demo Concepts — All Three Ideas
+# Demo Concepts — All Five Ideas
 
 **Status:** Demo narratives for evaluation — not final demo plan  
 **Reference:** [Project Ideas](project-ideas.md) | [System Design Notes](system-design-notes.md) | [Idea Comparison](idea-comparison.md)

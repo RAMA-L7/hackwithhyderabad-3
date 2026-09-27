@@ -1,6 +1,7 @@
 # Idea Comparison Matrix
 
-**Status:** Neutral evaluation — no winner declared  
+**Status:** Neutral evaluation record — the matrix itself declares no winner; the team has
+since selected Idea 1 (2026-09-27, see `decision-log.md`). Kept for reference.  
 **Purpose:** Support team discussion and decision  
 **Reference:** [Project Ideas](project-ideas.md) | [System Design Notes](system-design-notes.md) | [Demo Concepts](demo-concepts.md)
 

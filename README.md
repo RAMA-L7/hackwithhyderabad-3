@@ -1,6 +1,6 @@
 # HackwithHyderabad 3.0 — Pre-Planning Repository
 
-**Status:** Pre-planning (no final project selected)\
+**Status:** Project selected — Engineering Debugging Agent (implementation not started)\
 **Hackathon:** HackwithHyderabad 3.0\
 **Required Technology:** [Hindsight by Vectorize](https://hindsight.vectorize.io/)\
 **Team:** 2 members (see [Team Status](#team-status))\
@@ -24,7 +24,12 @@ This repository contains structured pre-planning documents to help the team:
 
 * Track decisions, assumptions, and open questions
 
-**Important:** No final project has been selected. All five ideas are candidates under evaluation.
+**Important:** The team has selected Idea 1 — the Engineering Debugging Agent with persistent
+memory using Hindsight (decided 2026-09-27 by Rama Krishna Ketha and Mukul Rai; see
+[docs/decision-log.md](docs/decision-log.md)). Implementation has not started yet — the
+repository is in architecture and implementation-planning phase. Full definition:
+[docs/final-project-definition.md](docs/final-project-definition.md). The remaining four ideas
+stay documented for reference.
 
 ***
 
@@ -90,6 +95,9 @@ Background: To be documented after discussion
 | [docs/decision-log.md](docs/decision-log.md)                     | Structured decision tracking                          |
 | [docs/hindsight-capability-verification.md](docs/hindsight-capability-verification.md) | Verified Hindsight capabilities vs proposals |
 | [docs/project-selection-analysis.md](docs/project-selection-analysis.md) | Evidence-based analysis of the 5 candidates      |
+| [docs/final-project-definition.md](docs/final-project-definition.md) | Selected project: problem, workflow, memory, MVP |
+| [docs/implementation-plan.md](docs/implementation-plan.md)           | Phased build plan (no code yet)                  |
+| [docs/team-task-split.md](docs/team-task-split.md)                   | Proposed Rama/Mukul task split                   |
 
 ***
 
