@@ -400,3 +400,40 @@ Consequence recorded: the two-phase plan's default "Hindsight hosting = local Do
 executable on this machine. Options (install Docker, pip/embedded server, or Hindsight Cloud) are
 left as a team decision; `docs/decision-log.md` is intentionally unchanged because no runtime result
 altered a decision.
+
+---
+
+## Stage 15 — M0 runtime verification results (2026-09-27, branch `rama-m0`)
+
+Milestone M0 executed live for the first time. **17 PASS · 0 FAIL · 0 BLOCKED** (runner exit `0`).
+Audit trail: `m0/results/m0-results-20260927T183607Z.{json,md}` (final) plus the earlier runs in the
+same directory, retained deliberately — including the run that reported a false-confidence 16/16
+PASS before the probes were given real assertions.
+
+Environment prepared: virtualenv `.venv` (git-ignored) and `hindsight-client 0.10.1` — the only
+dependency installed. `.env` was populated by the user and treated as read-only: never modified,
+never printed, never committed. The Hindsight Cloud endpoint and a dedicated probe bank were supplied
+as process-environment overrides for the run because `.env` still carries a local address for
+`HINDSIGHT_URL`; **the owner should update `.env`**.
+
+Verified: primary and fallback availability; structured output on both routes with local validation;
+error classification (primary returns 400 rather than the documented 404 for an unknown model — both
+are non-failover classes); primary?fallback routing with `fallback_used=True`; auth errors not
+failing over; Hindsight Cloud connectivity, bank provisioning, retain and recall; and the rebuilt
+A–E recall probes with real per-probe assertions.
+
+Key findings recorded in `docs/provider-verification.md`: the primary route **cannot** serve strict
+structured outputs (`require_parameters: true` yields a routing 404) and works only as a schema hint,
+so local validation is the sole guarantee; relevance scores band reproducibly (relevant ˜ 0.97–1.09,
+vague ˜ 0.35–0.44, unrelated ˜ 0.002–0.006), making a calibrated abstention floor feasible; recall
+returns ~15 results per query, so relevance filtering stays an application responsibility; and
+structured-call latency (3.4–7.2 s, up to ~13.9 s through failover) is the main demo risk.
+
+Seven harness defects were found and fixed, all confined to the M0 tooling: console encoding, missing
+`api_key` on client construction, strict-routing-only structured calls, an over-specific error-code
+assertion, bank provisioning (including that `create_bank` rejects `memory_defense`), probes that
+could not fail, and a wrong abstention baseline. No architecture document was changed, and no
+application pipeline code exists — M0 remains verification-only.
+
+`docs/decision-log.md` updated with the two decisions that genuine runtime results changed (hosting ?
+Cloud, and primary structured-output handling).

@@ -6,13 +6,13 @@
     "result": "PASS",
     "observed": "HTTP 200, non-empty content (5 chars), usage present=True",
     "design_impact": "Confirms the primary route is usable; if unavailable the demo runbook must start on fallback",
-    "latency_ms": 1757,
+    "latency_ms": 1487,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "model": "stealth/space-bunny-alpha"
     },
-    "timestamp_utc": "2026-09-27T18:36:09+00:00"
+    "timestamp_utc": "2026-09-27T18:34:36+00:00"
   },
   {
     "test_id": "RT-4",
@@ -21,13 +21,13 @@
     "result": "PASS",
     "observed": "HTTP 200, non-empty content (5 chars), usage present=True",
     "design_impact": "Fallback is the safety net; M1 is blocked until this passes",
-    "latency_ms": 1131,
+    "latency_ms": 1576,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "model": "deepseek-ai/DeepSeek-V4.1-Flash"
     },
-    "timestamp_utc": "2026-09-27T18:36:10+00:00"
+    "timestamp_utc": "2026-09-27T18:34:38+00:00"
   },
   {
     "test_id": "RT-2",
@@ -36,16 +36,16 @@
     "result": "PASS",
     "observed": "served_via=schema_hint; parsed and validated against hypothesis schema",
     "design_impact": "Decides whether proposal paths can use primary natively or must validate-and-retry",
-    "latency_ms": 6352,
+    "latency_ms": 7177,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "model": "stealth/space-bunny-alpha",
-      "completion_tokens": 399,
-      "raw_length": 253,
+      "completion_tokens": 530,
+      "raw_length": 190,
       "served_via": "schema_hint"
     },
-    "timestamp_utc": "2026-09-27T18:36:16+00:00"
+    "timestamp_utc": "2026-09-27T18:34:45+00:00"
   },
   {
     "test_id": "RT-5",
@@ -54,16 +54,16 @@
     "result": "PASS",
     "observed": "served_via=strict_routing; parsed and validated against hypothesis schema",
     "design_impact": "Confirms fallback satisfies the same structured-output contract",
-    "latency_ms": 3411,
+    "latency_ms": 6992,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "model": "deepseek-ai/DeepSeek-V4.1-Flash",
-      "completion_tokens": 501,
-      "raw_length": 252,
+      "completion_tokens": 1141,
+      "raw_length": 255,
       "served_via": "strict_routing"
     },
-    "timestamp_utc": "2026-09-27T18:36:20+00:00"
+    "timestamp_utc": "2026-09-27T18:34:52+00:00"
   },
   {
     "test_id": "RT-3",
@@ -82,7 +82,7 @@
         "bad_key": "AUTH"
       }
     },
-    "timestamp_utc": "2026-09-27T18:36:20+00:00"
+    "timestamp_utc": "2026-09-27T18:34:52+00:00"
   },
   {
     "test_id": "RT-6",
@@ -91,13 +91,13 @@
     "result": "PASS",
     "observed": "attempts=[{'provider': 'openrouter', 'base_url': 'http://127.0.0.1:9', 'outcome': 'error:UNAVAILABLE'}, {'provider': 'baseten', 'base_url': 'https://inference.baseten.co/v1', 'outcome': 'served'}]; served_by=baseten; fallback_used=True",
     "design_impact": "Failover is a demo-day requirement; this drill gates the router design",
-    "latency_ms": 8117,
+    "latency_ms": 13930,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "expected_fallback": "baseten"
     },
-    "timestamp_utc": "2026-09-27T18:36:28+00:00"
+    "timestamp_utc": "2026-09-27T18:35:06+00:00"
   },
   {
     "test_id": "RT-8",
@@ -112,14 +112,14 @@
     "details": {
       "status": 401
     },
-    "timestamp_utc": "2026-09-27T18:36:28+00:00"
+    "timestamp_utc": "2026-09-27T18:35:06+00:00"
   },
   {
     "test_id": "RT-7",
     "capability": "Structured-call latency calibration (timeout budget sizing)",
     "tool": "openrouter,baseten",
     "result": "PASS",
-    "observed": "latency_ms_by_provider={'openrouter': 6574, 'baseten': 3366} (-1 means error); served_via={'openrouter': 'schema_hint', 'baseten': 'strict_routing'}",
+    "observed": "latency_ms_by_provider={'openrouter': 4691, 'baseten': 5702} (-1 means error); served_via={'openrouter': 'schema_hint', 'baseten': 'strict_routing'}",
     "design_impact": "Sets LLM_TIMEOUT_S and retry budget so primary+fallback fits demo latency",
     "latency_ms": null,
     "error_class": null,
@@ -127,14 +127,14 @@
     "details": {
       "configured_timeout_s": 30
     },
-    "timestamp_utc": "2026-09-27T18:36:38+00:00"
+    "timestamp_utc": "2026-09-27T18:35:17+00:00"
   },
   {
     "test_id": "H-1",
     "capability": "Hindsight service connectivity",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "reachable and authenticated; bank 'm0-probes-v2' created by probe",
+    "observed": "reachable and authenticated; bank 'm0-probes' created by probe",
     "design_impact": "Confirms the memory service is reachable before any pipeline work",
     "latency_ms": null,
     "error_class": null,
@@ -143,20 +143,20 @@
       "bank_created_by_probe": true,
       "bank_error": null
     },
-    "timestamp_utc": "2026-09-27T18:36:48+00:00"
+    "timestamp_utc": "2026-09-27T18:35:22+00:00"
   },
   {
     "test_id": "H-2",
     "capability": "Hindsight retain (write one debug case)",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "retained 5/5 probe cases into bank 'm0-probes-v2'",
+    "observed": "retained 5/5 probe cases into bank 'm0-probes'",
     "design_impact": "Proves the write path and that our case shape is accepted",
     "latency_ms": null,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {},
-    "timestamp_utc": "2026-09-27T18:37:03+00:00"
+    "timestamp_utc": "2026-09-27T18:35:43+00:00"
   },
   {
     "test_id": "H-3",
@@ -169,14 +169,14 @@
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {},
-    "timestamp_utc": "2026-09-27T18:37:11+00:00"
+    "timestamp_utc": "2026-09-27T18:35:46+00:00"
   },
   {
     "test_id": "H-4A",
     "capability": "Recall probe A: similar problem, same environment type, known resolution",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "total_results=15; top_probe_id=A; top_scores={'final': 1.083128, 'semantic': 0.866759, 'keyword': 0.7}; assertion=top_1_is_expected; expectation='case A ranks first as useful context'",
+    "observed": "total_results=15; top_probe_id=A; top_scores={'final': 1.08768, 'semantic': 0.858814, 'keyword': 0.7}; assertion=top_1_is_expected; expectation='case A ranks first as useful context'",
     "design_impact": "Establishes whether relevance classes are achievable with this recall behavior",
     "latency_ms": null,
     "error_class": null,
@@ -187,30 +187,30 @@
         {
           "pos": 0,
           "probe_id": "A",
-          "final": 1.083128,
-          "semantic": 0.866759,
+          "final": 1.08768,
+          "semantic": 0.858814,
           "keyword": 0.7,
           "text_preview": "The orders-api service experienced intermittent connection resets (ECONNRESET) when proces"
         },
         {
           "pos": 1,
           "probe_id": "B",
-          "final": 0.026449,
+          "final": 0.02655,
           "semantic": 0.824489,
           "keyword": 0.7,
           "text_preview": "orders-api returns HTTP 502 errors for payloads exceeding 2MB, while smaller payloads retu"
         },
         {
           "pos": 2,
-          "probe_id": "A",
-          "final": 0.003786,
-          "semantic": 0.787297,
+          "probe_id": "D",
+          "final": 0.000168,
+          "semantic": 0.684947,
           "keyword": 0.2,
-          "text_preview": "The root cause of the connection resets was an upstream proxy request-size limit that trun"
+          "text_preview": "Uploads to media-uploader service fail with connection reset for files over 2MB. | When: 2"
         }
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:03+00:00"
+    "timestamp_utc": "2026-09-27T18:35:43+00:00"
   },
   {
     "test_id": "H-4B",
@@ -235,30 +235,30 @@
         },
         {
           "pos": 1,
-          "probe_id": "B",
-          "final": 0.855071,
-          "semantic": 0.833075,
-          "keyword": 0.4,
-          "text_preview": "The root cause of the 502 errors was an upstream dependency failing to handle oversized re"
+          "probe_id": "A",
+          "final": 0.595786,
+          "semantic": 0.755584,
+          "keyword": 0.5,
+          "text_preview": "The orders-api service experienced intermittent connection resets (ECONNRESET) when proces"
         },
         {
           "pos": 2,
-          "probe_id": "A",
-          "final": 0.60364,
-          "semantic": 0.748761,
-          "keyword": 0.5,
-          "text_preview": "The orders-api service experienced intermittent connection resets (ECONNRESET) when proces"
+          "probe_id": "B",
+          "final": 0.165929,
+          "semantic": 0.666484,
+          "keyword": 0.1,
+          "text_preview": "The root cause was an upstream dependency returning 502 for oversized bodies, not proxy li"
         }
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:04+00:00"
+    "timestamp_utc": "2026-09-27T18:35:43+00:00"
   },
   {
     "test_id": "H-4C",
     "capability": "Recall probe C: unrelated problem (irrelevance rejection)",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "total_results=15; top_probe_id=D; top_scores={'final': 0.005608, 'semantic': 0.583779, 'keyword': None}; assertion=top_1_not_expected; expectation='an unrelated frontend query must not surface case C as most relevant'",
+    "observed": "total_results=15; top_probe_id=D; top_scores={'final': 0.001975, 'semantic': 0.523193, 'keyword': None}; assertion=top_1_not_expected; expectation='an unrelated frontend query must not surface case C as most relevant'",
     "design_impact": "Establishes whether relevance classes are achievable with this recall behavior",
     "latency_ms": null,
     "error_class": null,
@@ -269,37 +269,37 @@
         {
           "pos": 0,
           "probe_id": "D",
-          "final": 0.005608,
-          "semantic": 0.583779,
+          "final": 0.001975,
+          "semantic": 0.523193,
           "keyword": null,
-          "text_preview": "The issue was resolved by increasing the nginx client_max_body_size configuration. | When:"
+          "text_preview": "Resolved upload failures by increasing nginx client_max_body_size. | When: 2026-09-27"
         },
         {
           "pos": 1,
           "probe_id": "D",
-          "final": 0.003215,
-          "semantic": 0.505457,
+          "final": 0.001892,
+          "semantic": 0.480802,
           "keyword": null,
-          "text_preview": "The root cause of the upload failures was a reverse proxy request-body limit in nginx-1.25"
+          "text_preview": "Root cause of upload failures identified as nginx reverse proxy request-body limit. | When"
         },
         {
           "pos": 2,
           "probe_id": "C",
-          "final": 0.000777,
-          "semantic": 0.475393,
+          "final": 0.000689,
+          "semantic": 0.473548,
           "keyword": null,
-          "text_preview": "The issue was resolved by adding an index to the lookup table, restoring the batch job run"
+          "text_preview": "The issue was resolved by adding an index to the lookup table, which restored the batch jo"
         }
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:05+00:00"
+    "timestamp_utc": "2026-09-27T18:35:45+00:00"
   },
   {
     "test_id": "H-4D",
     "capability": "Recall probe D: same root cause, different environment",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "total_results=15; top_probe_id=D; top_scores={'final': 0.970962, 'semantic': 0.802452, 'keyword': 0.8}; assertion=top_1_in_expected; expectation='case A or D ranks first; environment mismatch must remain visible for the app to flag'",
+    "observed": "total_results=15; top_probe_id=D; top_scores={'final': 1.011375, 'semantic': 0.80895, 'keyword': 0.9}; assertion=top_1_in_expected; expectation='case A or D ranks first; environment mismatch must remain visible for the app to flag'",
     "design_impact": "Establishes whether relevance classes are achievable with this recall behavior",
     "latency_ms": null,
     "error_class": null,
@@ -310,37 +310,37 @@
         {
           "pos": 0,
           "probe_id": "D",
-          "final": 0.970962,
-          "semantic": 0.802452,
-          "keyword": 0.8,
-          "text_preview": "The media-uploader service experienced connection resets for file uploads exceeding 2MB. |"
+          "final": 1.011375,
+          "semantic": 0.80895,
+          "keyword": 0.9,
+          "text_preview": "Uploads to media-uploader service fail with connection reset for files over 2MB. | When: 2"
         },
         {
           "pos": 1,
           "probe_id": "A",
-          "final": 0.969402,
-          "semantic": 0.734482,
+          "final": 0.939877,
+          "semantic": 0.742836,
           "keyword": 0.4,
           "text_preview": "The orders-api service experienced intermittent connection resets (ECONNRESET) when proces"
         },
         {
           "pos": 2,
           "probe_id": "D",
-          "final": 0.360178,
-          "semantic": 0.748063,
-          "keyword": 0.4,
-          "text_preview": "The root cause of the upload failures was a reverse proxy request-body limit in nginx-1.25"
+          "final": 0.213722,
+          "semantic": 0.769176,
+          "keyword": 0.3,
+          "text_preview": "Resolved upload failures by increasing nginx client_max_body_size. | When: 2026-09-27"
         }
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:05+00:00"
+    "timestamp_utc": "2026-09-27T18:35:46+00:00"
   },
   {
     "test_id": "H-4E",
     "capability": "Recall probe E: insufficient evidence (abstention feasibility)",
     "tool": "hindsight-client",
     "result": "PASS",
-    "observed": "total_results=15; top_probe_id=E; top_scores={'final': 0.351734, 'semantic': 0.766172, 'keyword': 0.3}; assertion=strictly_below_relevant_queries; expectation='a vague query must rank strictly below every relevant query so a relative floor can abstain'",
+    "observed": "total_results=15; top_probe_id=E; top_scores={'final': 0.439301, 'semantic': 0.760352, 'keyword': 0.3}; assertion=strictly_below_relevant_queries; expectation='a vague query must rank strictly below every relevant query so a relative floor can abstain'",
     "design_impact": "Establishes whether relevance classes are achievable with this recall behavior",
     "latency_ms": null,
     "error_class": null,
@@ -351,48 +351,49 @@
         {
           "pos": 0,
           "probe_id": "E",
-          "final": 0.351734,
-          "semantic": 0.766172,
+          "final": 0.439301,
+          "semantic": 0.760352,
           "keyword": 0.3,
-          "text_preview": "Sporadic latency spikes on checkout-api endpoint with p99 latency 3x baseline for 30 secon"
+          "text_preview": "Sporadic latency spikes on checkout-api endpoint in eu-west region, with p99 latency 3x ba"
         },
         {
           "pos": 1,
           "probe_id": "E",
-          "final": 0.037723,
-          "semantic": 0.693356,
+          "final": 0.037709,
+          "semantic": 0.701199,
           "keyword": 0.1,
           "text_preview": "Increased memory limit failed to resolve checkout-api latency spikes. | When: 2026-09-27"
         },
         {
           "pos": 2,
           "probe_id": "C",
-          "final": 0.000465,
-          "semantic": 0.634019,
+          "final": 0.000412,
+          "semantic": 0.643351,
           "keyword": null,
-          "text_preview": "The nightly batch job in the batch-runner service experienced a performance degradation, i"
+          "text_preview": "The batch-runner service nightly batch job experienced a performance degradation, with com"
         }
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:11+00:00"
+    "timestamp_utc": "2026-09-27T18:35:46+00:00"
   },
   {
     "test_id": "H-4E-ASSERT",
     "capability": "Abstention feasibility: vague query ranks strictly below all relevant queries",
     "tool": "hindsight-client",
-    "result": "PASS",
-    "observed": "vague_query_top_final=0.351734; min_relevant_query_top_final=0.970962; strictly_below=True",
+    "result": "FAIL",
+    "observed": "vague_query_top_final=0.439301; min_relevant_query_top_final=0.001975; strictly_below=False",
     "design_impact": "Determines whether abstention can use a relative score floor; absolute scores are documented as non-calibrated, so a fixed numeric threshold is unsafe",
     "latency_ms": null,
     "error_class": null,
     "reproducible": "python -m m0.run_all",
     "details": {
       "relevant_query_tops": [
-        1.083128,
+        1.08768,
         1.087067,
-        0.970962
+        0.001975,
+        1.011375
       ]
     },
-    "timestamp_utc": "2026-09-27T18:37:11+00:00"
+    "timestamp_utc": "2026-09-27T18:35:46+00:00"
   }
 ]

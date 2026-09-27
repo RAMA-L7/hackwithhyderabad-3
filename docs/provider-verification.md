@@ -65,68 +65,92 @@ affected design knob is adjusted **in configuration**, not in workflow code.
 provisioned Baseten key, installed HTTP client, and network egress. These are the only items
 blocking the start of M0.
 
-## Runtime Results â€” run 2026-09-27T18:08:42Z (`m0/results/m0-results-20260927T180842Z.json`)
+## Runtime Results — final run 2026-09-27T18:36:07Z (`m0/results/m0-results-20260927T183607Z.json`)
 
-**Outcome: 0 PASS Â· 0 FAIL Â· 16 BLOCKED.** No test executed against a live provider or a live
-Hindsight instance, because the required credentials and service are absent. Nothing is inferred
-from these rows; no mock or assumed result is recorded. Re-run with `python -m m0.run_all` once the
-blockers below are cleared. Runner exit code was `2` (blocked), as designed.
+**Outcome: 17 PASS · 0 FAIL · 0 BLOCKED.** Runner exit code `0`. Executed live against the real
+OpenRouter route, the real Baseten route, and Hindsight Cloud. No mocks, no assumed results.
+Credentials were supplied through `.env` (git-ignored, never printed) and the Hindsight endpoint
+and bank id were additionally supplied as process-environment overrides for the run; `.env` itself
+was never modified.
 
-| Test | Capability | Result | Blocking reason |
-|------|-----------|--------|-----------------|
-| RT-1 | Primary availability | NOT_RUN_BLOCKED | `LLM_PRIMARY_API_KEY`, `LLM_PRIMARY_BASE_URL`, `LLM_PRIMARY_MODEL` unset |
-| RT-2 | Primary structured output + local validation | NOT_RUN_BLOCKED | same as RT-1 |
-| RT-3 | Primary error classification | NOT_RUN_BLOCKED | same as RT-1 |
-| RT-4 | Fallback availability | NOT_RUN_BLOCKED | `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_BASE_URL`, `LLM_FALLBACK_MODEL` unset |
-| RT-5 | Fallback structured output + local validation | NOT_RUN_BLOCKED | same as RT-4 |
-| RT-6 | Primary â†’ fallback routing drill | NOT_RUN_BLOCKED | fallback unrunnable (same as RT-4) |
-| RT-7 | Latency calibration | NOT_RUN_BLOCKED | no provider configured |
-| RT-8 | Auth error must not fail over | NOT_RUN_BLOCKED | primary unrunnable (same as RT-1) |
-| H-1 | Hindsight connectivity | NOT_RUN_BLOCKED | no instance (`HINDSIGHT_URL` unset) **and Docker not installed on the dev machine** |
-| H-2 | Hindsight retain | NOT_RUN_BLOCKED | requires H-1 + `hindsight-client` |
-| H-3 | Hindsight recall | NOT_RUN_BLOCKED | requires H-2 |
-| H-4Aâ€¦H-4E | Aâ€“E recall/abstention probes | NOT_RUN_BLOCKED | requires H-2/H-3 and a seeded bank |
+| Test | Capability | Result | Observed |
+|------|-----------|--------|----------|
+| RT-1 | Primary availability (OpenRouter `stealth/space-bunny-alpha`) | PASS | HTTP 200, non-empty content, usage returned; 1.0–1.8 s |
+| RT-2 | Primary structured output + local validation | PASS | **served via `schema_hint`, not strict routing**; output parsed and validated; 6.4–7.2 s |
+| RT-3 | Primary error classification | PASS | unknown model ? **400 `BAD_REQUEST`** (not the documented 404); bad key ? 401 `AUTH`; neither fails over |
+| RT-4 | Fallback availability (Baseten `deepseek-ai/DeepSeek-V4.1-Flash`) | PASS | HTTP 200, non-empty content, usage returned; 0.7–1.6 s |
+| RT-5 | Fallback structured output + local validation | PASS | served via **strict routing**; parsed and validated; 3.4–7.0 s |
+| RT-6 | Primary ? fallback routing drill | PASS | unreachable primary ? `UNAVAILABLE` ? fallback served; `fallback_used=True`; 5.6–13.9 s total |
+| RT-7 | Structured-call latency calibration | PASS | primary ˜ 4.7–7.2 s, fallback ˜ 3.4–5.7 s |
+| RT-8 | Auth error must not fail over | PASS | `AUTH` raised, `failover_triggered=False` |
+| H-1 | Hindsight connectivity | PASS | Cloud reachable and authenticated; bank auto-provisioned |
+| H-2 | Hindsight retain | PASS | 5/5 probe cases retained |
+| H-3 | Hindsight recall (query + types + max_tokens) | PASS | executed for all probe queries |
+| H-4A | relevant case retrievable | PASS | top = case A, `final` ˜ 1.08, `semantic` ˜ 0.87, `keyword` = 0.7 |
+| H-4B | similar symptoms, different root cause | PASS | top = case **B** (not A), `final` ˜ 1.09, `keyword` = 1.0 |
+| H-4C | irrelevance rejection (control) | PASS | top = case **D**, not C; `final` ˜ 0.002–0.006 |
+| H-4D | same root cause, different environment | PASS | top = case D, `final` ˜ 0.97–1.01 |
+| H-4E | vague query | PASS | top = case E, `final` ˜ 0.35–0.44 |
+| H-4E-ASSERT | abstention feasibility | PASS | vague-query `final` (0.352) < minimum relevant-query `final` (0.971) |
 
-### Environment inspection (same run, `D:\hackwithhyderabad-3`)
+### Findings that change design decisions
+
+1. **The primary route cannot serve strict structured outputs.** Sending `provider.require_parameters:
+   true` returns `404 "No endpoints found that can handle the requested parameters"`. The same request
+   without that routing constraint returns schema-shaped output that passes local validation
+   (`served_via=schema_hint`). This resolves U1: **the primary supports structured output only as a
+   hint, so local schema validation is the sole guarantee** — exactly the fail-closed mechanism the
+   architecture already specifies. The fallback serves strict routing natively.
+2. **OpenRouter returns 400, not the documented 404, for an unknown model suffix.** Both are
+   non-failover configuration classes, so the safety property holds; the harness expectation was
+   corrected to assert the property (never fails over) rather than one specific code.
+3. **Relevance scores are strongly banded and reproducible** across two independent banks:
+   genuinely relevant ˜ 0.97–1.09; vague/topically-related ˜ 0.35–0.44; unrelated ˜ 0.002–0.006.
+   A score floor is therefore feasible for abstention (for example, abstain below ~0.05, treat
+   0.1–0.6 as a weak reference). Absolute values remain query-relative per provider docs, so the
+   floor must be re-calibrated as seed data grows rather than fixed once.
+4. **Recall returns ~15 results per query by default**, so relevance filtering is an application
+   responsibility, not a provider guarantee. The BM25 arm contributed `keyword` scores for relevant
+   queries and none for the unrelated control, confirming the hybrid retrieval design is active.
+5. **Latency is the main demo risk.** A single structured call costs 3.4–7.2 s, and the full failover
+   path measured 5.6–13.9 s. Timeouts and retry budgets must be sized for a worst case of roughly
+   15 s per LLM step, and the demo script should minimise the number of LLM calls per interaction.
+6. **Hindsight Cloud requires the bank to exist first.** `create_bank` does not accept
+   `memory_defense` (only `update_bank_config` does); the probe now provisions the bank idempotently
+   and then applies Memory Defense.
+
+### Defects found and fixed during this session (harness only)
+
+| Defect | Fix | Verdict |
+|--------|-----|---------|
+| cp1252 console could not print `?` | stdout reconfigured to UTF-8 | fixed |
+| Client constructed without `api_key` (Cloud) | pass `api_key` from config | fixed |
+| Strict-routing-only structured call failed on primary | retry as schema hint, still gated by local validation | fixed |
+| Error-classification test asserted one specific code for unknown model | assert the never-fail-over property instead | fixed |
+| Bank never created (`memory_defense` passed to `create_bank`, which rejects it) | create bank, then apply `memory_defense` via `update_bank_config` | fixed |
+| **A–E probes asserted nothing and reported PASS unconditionally** | real per-probe assertions added; the false-confidence run is retained in the audit trail | fixed |
+| **E-assert baseline wrongly included the irrelevant control query** | control query excluded from the relevant baseline | fixed |
+
+The A–E probe flaw is worth stating plainly: an earlier run reported 16/16 PASS while every query
+returned the probe's own case at the top, and the top score for a completely unrelated query was
+`final = 0.002`. A probe that cannot fail proves nothing. The probes were rebuilt with real
+assertions before any result was reported as verified.
+
+### Environment (final run)
 
 | Item | Finding |
 |------|---------|
-| Python | 3.10.11 (Microsoft Store build), pip 26.0.1; no `py` launcher |
-| Virtual environments | none present in repo or `D:\` |
-| Docker | **not installed** â€” CLI absent, daemon not responding |
-| API-key env vars | none of `OPENROUTER_API_KEY`, `BASETEN_API_KEY`, `HINDSIGHT_API_KEY`, `HINDSIGHT_API_LLM_API_KEY`, `HINDSIGHT_URL` present |
-| `.env` files | none present |
-| Dependency-file conflicts | none â€” no `pyproject.toml` / `requirements*.txt` / `Pipfile` / `uv.lock` / `package.json` exists, so the proposed `pyproject.toml` has nothing to conflict with |
-| Packages installed by this stage | **none** (scaffolding is stdlib-only; nothing installed) |
+| Python | 3.10.11, virtualenv at `.venv` (git-ignored) |
+| Installed this session | `hindsight-client 0.10.1` (only new dependency) |
+| Docker | still not installed — Hindsight Cloud used instead |
+| `.env` | populated by the user; read only; never modified, printed, or committed |
+| Hindsight endpoint | supplied via process env for the run; `.env` value still points at a local address and should be updated by the owner |
 
-### Harness self-check (offline, no keys â€” validates tooling, not providers)
+### Harness self-check re-run (offline, after all changes)
 
-Executed on branch `rama-m0`, Python 3.10.11; `python -m compileall m0` clean; self-check reported
-`SELFCHECK_FAILURES = 0`.
-
-| Check | Result |
-|-------|--------|
-| Valid hypothesis object â†’ validator errors | `[]` (no false rejection) |
-| Invalid `relevance_state` enum | caught |
-| Missing required properties | caught (3 reported) |
-| Disallowed additional property | caught |
-| Wrong type (`string` where `array` expected) | caught |
-| Empty string violating `minLength` | caught |
-| Status â†’ class mapping | 400 `BAD_REQUEST`, 401/403 `AUTH`, 402 `BILLING`, 404 `MODEL_NOT_FOUND`, 429 `RATE_LIMITED`, 500/502/529 `UNAVAILABLE` |
-| Failover eligibility | only 429 / 5xx / 529 eligible â€” **AUTH excluded** (401 and 403 asserted), satisfying the team rule before any live test |
-| Secret redaction | `<unset>` / `<set:redacted>` / `<set:redacted:len=24>` â€” no value ever printed |
-| Config load with no environment | all three subsystems report `configured=False` and tests block rather than run |
-| Aâ€“E probe definitions | all five present with expectations |
-
-### What these results do and do not change
-
-- **No decision changed**, so `docs/decision-log.md` is intentionally untouched by this stage.
-- One environment constraint surfaced that affects a *proposal*, not a decision: the two-phase plan's
-  default "Hindsight hosting = local Docker" is **not executable on this machine** (Docker absent).
-  Options for the team: install Docker, use the pip/embedded server, or use Hindsight Cloud. This is a
-  decision for the team, recorded here and in `docs/change-log.md`, not decided by this review.
-- U1â€“U7 remain unverified; RT-1â€¦RT-8 and H-1â€¦H-4E remain the gates for Milestone M0 completion.
-
+`python -m compileall m0` clean; self-check `SELFCHECK_FAILURES = 0` — valid object accepted;
+bad-enum, missing-required, extra-property, wrong-type and `minLength` violations all caught;
+401/403 asserted non-failover-eligible; redaction confirmed.
 ## Classification summary
 
 - Verified from official provider docs: 17 facts (V1â€“V17).

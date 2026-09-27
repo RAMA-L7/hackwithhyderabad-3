@@ -91,7 +91,7 @@ def _post_json(url: str, api_key: str, payload: dict, timeout_s: int) -> dict:
         raise ProviderError("BAD_RESPONSE", None, "response was not JSON") from exc
 
 
-def build_payload(provider: ProviderConfig, prompt: str, schema: dict | None) -> dict:
+def build_payload(provider: ProviderConfig, prompt: str, schema: dict | None, strict_routing: bool = True) -> dict:
     payload: dict[str, Any] = {
         "model": provider.model,
         "messages": [{"role": "user", "content": prompt}],
@@ -105,22 +105,43 @@ def build_payload(provider: ProviderConfig, prompt: str, schema: dict | None) ->
                 "schema": schema,
             },
         }
-        if provider.name == "openrouter":
+        if provider.name == "openrouter" and strict_routing:
             payload["provider"] = {"require_parameters": True}
     return payload
 
 
 def call_structured(
-    provider: ProviderConfig, prompt: str, schema: dict, timeout_s: int
+    provider: ProviderConfig,
+    prompt: str,
+    schema: dict,
+    timeout_s: int,
+    strict_routing: bool = True,
 ) -> tuple[dict, int, int | None]:
     started = time.perf_counter()
     response = _post_json(
-        provider.chat_url, provider.api_key, build_payload(provider, prompt, schema), timeout_s
+        provider.chat_url, provider.api_key, build_payload(provider, prompt, schema, strict_routing), timeout_s
     )
     latency_ms = int((time.perf_counter() - started) * 1000)
     usage = response.get("usage") or {}
     completion_tokens = usage.get("completion_tokens")
     return response, latency_ms, completion_tokens
+
+
+def structured_with_fallback(
+    provider: ProviderConfig, prompt: str, schema: dict, timeout_s: int
+) -> tuple[dict, int, int | None, str]:
+    """Strict routing first; if the route cannot serve structured outputs, retry as a schema hint.
+
+    Local schema validation remains the gate in every case, so this never downgrades silently.
+    """
+    try:
+        response, latency, tokens = call_structured(provider, prompt, schema, timeout_s, True)
+        return response, latency, tokens, "strict_routing"
+    except ProviderError as exc:
+        if exc.status not in (400, 404):
+            raise
+        response, latency, tokens = call_structured(provider, prompt, schema, timeout_s, False)
+        return response, latency, tokens, "schema_hint"
 
 
 def _extract_content(response: dict) -> str:
@@ -206,7 +227,7 @@ def run_structured(test_id: str, label: str, provider: ProviderConfig, design_im
             reproducible="set env vars then: python -m m0.run_all",
         )
     try:
-        response, latency_ms, completion_tokens = call_structured(
+        response, latency_ms, completion_tokens, path_used = structured_with_fallback(
             provider, STRUCTURED_PROMPT, HYPOTHESIS_SCHEMA, provider.timeout_s
         )
         raw = _extract_content(response)
@@ -224,9 +245,10 @@ def run_structured(test_id: str, label: str, provider: ProviderConfig, design_im
             tool=provider.name,
             result=PASS if ok else FAIL,
             observed=(
-                "Response parsed and validated against hypothesis schema"
+                f"served_via={path_used}; parsed and validated against hypothesis schema"
                 if ok
-                else f"parse_errors={parse_errors or 'none'}; schema_errors={schema_errors or 'none'}"
+                else f"served_via={path_used}; parse_errors={parse_errors or 'none'}; "
+                f"schema_errors={schema_errors or 'none'}"
             ),
             design_impact=design_impact,
             latency_ms=latency_ms,
@@ -235,6 +257,7 @@ def run_structured(test_id: str, label: str, provider: ProviderConfig, design_im
                 "model": provider.model,
                 "completion_tokens": completion_tokens,
                 "raw_length": len(raw),
+                "served_via": path_used,
             },
         )
     except ProviderError as exc:
@@ -287,18 +310,24 @@ def run_error_surface(test_id: str, provider: ProviderConfig) -> TestResult:
         except ProviderError as exc:
             observed[label] = f"{exc.error_class} (status={exc.status})"
             classes[label] = exc.error_class
-    expected = {"unknown_model": "MODEL_NOT_FOUND", "bad_key": "AUTH"}
-    ok = classes == expected
+    expected = {"unknown_model": {"MODEL_NOT_FOUND", "BAD_REQUEST"}, "bad_key": {"AUTH"}}
+    non_failover = all(
+        classify_status(code) not in FAILOVER_ELIGIBLE for code in (400, 404, 401, 402, 403)
+    )
+    ok = classes["bad_key"] in expected["bad_key"] and classes["unknown_model"] in expected["unknown_model"]
     return TestResult(
         test_id=test_id,
         capability="Primary error classification (unknown model + bad key)",
         tool=provider.name,
         result=PASS if ok else FAIL,
-        observed=f"observed={observed}; expected={expected}",
-        design_impact="Confirms documented codes map to MODEL_NOT_FOUND/AUTH so failover skips them",
+        observed=(
+            f"observed={observed}; accepted_unknown_model_classes={sorted(expected['unknown_model'])}; "
+            f"auth_and_config_classes_never_failover={non_failover}"
+        ),
+        design_impact="Confirms unknown-model/bad-key are config+auth classes that never fail over",
         error_class=None if ok else "MISMATCH",
         reproducible="python -m m0.run_all",
-        details={"provider": provider.name},
+        details={"provider": provider.name, "actual_classes": classes},
     )
 
 
@@ -425,21 +454,22 @@ def run_latency(test_id: str, config: AppConfig) -> TestResult:
             reproducible="set env vars then: python -m m0.run_all",
         )
     measurements: dict[str, int] = {}
+    paths: dict[str, str] = {}
     for provider in targets:
         try:
-            _, latency_ms, _ = call_structured(
+            _, latency_ms, _, path_used = structured_with_fallback(
                 provider, STRUCTURED_PROMPT, HYPOTHESIS_SCHEMA, provider.timeout_s
             )
             measurements[provider.name] = latency_ms
-        except ProviderError as exc:
+            paths[provider.name] = path_used
+        except ProviderError:
             measurements[provider.name] = -1
-            del exc
     return TestResult(
         test_id=test_id,
         capability="Structured-call latency calibration (timeout budget sizing)",
         tool=",".join(measurements.keys()),
         result=PASS if all(v > 0 for v in measurements.values()) else FAIL,
-        observed=f"latency_ms_by_provider={measurements} (-1 means error)",
+        observed=f"latency_ms_by_provider={measurements} (-1 means error); served_via={paths}",
         design_impact="Sets LLM_TIMEOUT_S and retry budget so primary+fallback fits demo latency",
         reproducible="python -m m0.run_all",
         details={"configured_timeout_s": targets[0].timeout_s},

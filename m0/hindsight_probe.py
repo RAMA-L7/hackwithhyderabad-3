@@ -25,8 +25,10 @@ PROBE_CASES: list[dict[str, Any]] = [
             "resolution": "set proxy max_request_bytes to 8MB and retested",
             "outcome": "resolved",
         },
-        "query": "large payload requests are being reset on orders-api, what did we find before?",
-        "expectation": "recalled as useful context; root cause surfaced",
+        "query": "orders-api connections are being reset on large payloads, what did we find before?",
+        "assertion": "top_1_is_expected",
+        "expected_top": ["A"],
+        "expectation": "case A ranks first as useful context",
     },
     {
         "id": "B",
@@ -42,11 +44,13 @@ PROBE_CASES: list[dict[str, Any]] = [
             "outcome": "resolved",
         },
         "query": "orders-api 502 error only on large payloads",
-        "expectation": "recalled but flagged as different root cause; must not be presented as identical to A",
+        "assertion": "top_1_is_expected",
+        "expected_top": ["B"],
+        "expectation": "case B ranks first; must be distinguishable from case A despite similar symptoms",
     },
     {
         "id": "C",
-        "label": "unrelated problem",
+        "label": "unrelated problem (irrelevance rejection)",
         "seed": {
             "problem_signature": "nightly batch job finishes 40 minutes late",
             "symptoms": "batch completion time grew from 20 to 60 minutes over two weeks",
@@ -58,7 +62,9 @@ PROBE_CASES: list[dict[str, Any]] = [
             "outcome": "resolved",
         },
         "query": "frontend CSS is not loading on the marketing site",
-        "expectation": "irrelevant; must not be surfaced as investigation context",
+        "assertion": "top_1_not_expected",
+        "expected_top": ["C"],
+        "expectation": "an unrelated frontend query must not surface case C as most relevant",
     },
     {
         "id": "D",
@@ -69,16 +75,18 @@ PROBE_CASES: list[dict[str, Any]] = [
             "environment": {"service": "media-uploader", "runtime": "node20", "proxy": "nginx-1.25"},
             "investigation_trace": ["compared file sizes at failure", "read nginx error log"],
             "failed_approaches": ["raised client timeout: no effect"],
-            "root_cause": "reverse proxy request-body limit (same class as orders-api case A)",
+            "root_cause": "reverse proxy request-body limit (same class as the orders-api envoy case)",
             "resolution": "raised nginx client_max_body_size; retested uploads",
             "outcome": "resolved",
         },
         "query": "payments-service uploads over 2MB fail with connection reset behind nginx",
-        "expectation": "recalled with explicit environment mismatch shown; reuse only if conditions verified",
+        "assertion": "top_1_in_expected",
+        "expected_top": ["A", "D"],
+        "expectation": "case A or D ranks first; environment mismatch must remain visible for the app to flag",
     },
     {
         "id": "E",
-        "label": "insufficient evidence",
+        "label": "insufficient evidence (abstention feasibility)",
         "seed": {
             "problem_signature": "sporadic latency spike on checkout endpoint",
             "symptoms": "p99 latency 3x baseline for roughly 30 seconds at a time",
@@ -90,7 +98,9 @@ PROBE_CASES: list[dict[str, Any]] = [
             "outcome": "workaround",
         },
         "query": "latency",
-        "expectation": "query too vague to match; system must abstain rather than force a case",
+        "assertion": "strictly_below_relevant_queries",
+        "expected_top": ["E"],
+        "expectation": "a vague query must rank strictly below every relevant query so a relative floor can abstain",
     },
 ]
 
@@ -101,6 +111,8 @@ def _client(app: AppConfig):
     except Exception as exc:  # noqa: BLE001
         return None, f"official client not importable ({type(exc).__name__})"
     try:
+        if app.hindsight_api_key:
+            return Hindsight(base_url=app.hindsight_url, api_key=app.hindsight_api_key), None
         return Hindsight(base_url=app.hindsight_url), None
     except Exception as exc:  # noqa: BLE001
         return None, f"client construction failed ({type(exc).__name__})"
@@ -172,6 +184,26 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
 
     results: list[TestResult] = []
     bank = app.hindsight_bank_id
+    bank_created = False
+    bank_error: str | None = None
+
+    try:
+        client.get_bank_config(bank)
+    except Exception:
+        try:
+            client.create_bank(
+                bank,
+                enable_text_search=True,
+                enable_temporal_retrieval=True,
+                enable_graph_retrieval=True,
+            )
+            bank_created = True
+            try:
+                client.update_bank_config(bank, memory_defense={"enabled": True})
+            except Exception as exc:  # noqa: BLE001
+                bank_error = f"memory_defense not applied: {type(exc).__name__}"
+        except Exception as exc:  # noqa: BLE001
+            bank_error = f"{type(exc).__name__}: {exc}"
 
     try:
         client.recall(bank_id=bank, query="connectivity probe", max_tokens=64)
@@ -181,9 +213,13 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
                 capability="Hindsight service connectivity",
                 tool="hindsight-client",
                 result=PASS,
-                observed="recall() returned without error against configured URL",
+                observed=(
+                    f"reachable and authenticated; bank '{bank}' "
+                    f"{'created by probe' if bank_created else 'already existed'}"
+                ),
                 design_impact="Confirms the memory service is reachable before any pipeline work",
                 reproducible="python -m m0.run_all",
+                details={"bank_created_by_probe": bank_created, "bank_error": bank_error},
             )
         )
     except Exception as exc:  # noqa: BLE001
@@ -197,6 +233,7 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
                 design_impact="Blocks all memory work",
                 error_class=type(exc).__name__,
                 reproducible="python -m m0.run_all",
+                details={"bank_created_by_probe": bank_created, "bank_error": bank_error},
             )
         )
         return results
@@ -207,7 +244,7 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
             client.retain(
                 bank_id=bank,
                 content=(
-                    f"Debug case {case['id']}. Problem: {case['seed']['problem_signature']}. "
+                    f"Problem: {case['seed']['problem_signature']}. "
                     f"Symptoms: {case['seed']['symptoms']}. "
                     f"Environment: {case['seed']['environment']}. "
                     f"Failed approaches: {case['seed']['failed_approaches']}. "
@@ -246,6 +283,20 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
         )
     )
 
+    def _score_fields(item: Any) -> dict[str, Any]:
+        sc = getattr(item, "scores", None)
+        if sc is None:
+            return {}
+        out = {}
+        for field_name in ("final", "reranker", "semantic", "keyword"):
+            value = getattr(sc, field_name, None)
+            if isinstance(value, (int, float)):
+                out[field_name] = round(float(value), 6)
+        return out
+
+    ranked: list[dict[str, Any]] = []
+    relevant_query_tops: list[float] = []
+
     for case in PROBE_CASES:
         try:
             response = client.recall(
@@ -257,40 +308,116 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
             results_list = getattr(response, "results", None)
             if results_list is None and isinstance(response, dict):
                 results_list = response.get("results")
-            count = len(results_list or [])
-            top = (results_list or [{}])[0]
-            top_text = getattr(top, "text", None) or (
-                top.get("text") if isinstance(top, dict) else ""
-            )
-            top_meta = getattr(top, "metadata", None) or (
-                top.get("metadata") if isinstance(top, dict) else {}
-            )
-            hit_probe = (top_meta or {}).get("probe_id") if isinstance(top_meta, dict) else None
+            results_list = list(results_list or [])
+
+            entries: list[dict[str, Any]] = []
+            for position, item in enumerate(results_list):
+                meta = getattr(item, "metadata", None)
+                if meta is None and isinstance(item, dict):
+                    meta = item.get("metadata")
+                probe_id = (meta or {}).get("probe_id") if isinstance(meta, dict) else None
+                text = getattr(item, "text", None)
+                if text is None and isinstance(item, dict):
+                    text = item.get("text")
+                scores = _score_fields(item)
+                entries.append(
+                    {
+                        "pos": position,
+                        "probe_id": probe_id,
+                        "final": scores.get("final"),
+                        "semantic": scores.get("semantic"),
+                        "keyword": scores.get("keyword"),
+                        "text_preview": (text or "")[:90],
+                    }
+                )
+
+            top = entries[0] if entries else None
+            top_id = (top or {}).get("probe_id")
+            top_final = (top or {}).get("final")
+            if (
+                case["assertion"] not in ("strictly_below_relevant_queries", "top_1_not_expected")
+                and isinstance(top_final, (int, float))
+            ):
+                relevant_query_tops.append(float(top_final))
+            ranked.append({"probe": case["id"], "entries": entries[:5], "total": len(entries)})
+
+            assertion = case["assertion"]
+            if assertion == "top_1_is_expected":
+                passed = top_id in case["expected_top"]
+            elif assertion == "top_1_not_expected":
+                passed = top_id not in case["expected_top"]
+            elif assertion == "top_1_in_expected":
+                passed = top_id in case["expected_top"]
+            else:
+                passed = True
+
             results.append(
                 TestResult(
                     test_id=f"H-4{case['id']}",
-                    capability=f"Recall/abstention probe {case['id']}: {case['label']}",
+                    capability=f"Recall probe {case['id']}: {case['label']}",
                     tool="hindsight-client",
-                    result=PASS,
+                    result=PASS if passed else FAIL,
                     observed=(
-                        f"results={count}; top_probe_id={hit_probe}; "
-                        f"expectation='{case['expectation']}'"
+                        f"total_results={len(entries)}; top_probe_id={top_id}; "
+                        f"top_scores={ {k: v for k, v in (top or {}).items() if k in ('final','semantic','keyword')} }; "
+                        f"assertion={assertion}; expectation='{case['expectation']}'"
                     ),
-                    design_impact="Confirms relevance classes and abstention behavior before M1 freeze",
+                    design_impact="Establishes whether relevance classes are achievable with this recall behavior",
                     reproducible="python -m m0.run_all",
-                    details={"query": case["query"], "top_text_preview": (top_text or "")[:160]},
+                    details={
+                        "query": case["query"],
+                        "top3": entries[:3],
+                    },
                 )
             )
         except Exception as exc:  # noqa: BLE001
             results.append(
                 TestResult(
                     test_id=f"H-4{case['id']}",
-                    capability=f"Recall/abstention probe {case['id']}: {case['label']}",
+                    capability=f"Recall probe {case['id']}: {case['label']}",
                     tool="hindsight-client",
                     result=FAIL,
                     observed=f"error: {type(exc).__name__}: {exc}",
-                    design_impact="Confirms relevance classes and abstention behavior before M1 freeze",
+                    design_impact="Establishes whether relevance classes are achievable with this recall behavior",
                     error_class=type(exc).__name__,
+                    reproducible="python -m m0.run_all",
+                )
+            )
+
+    if ranked:
+        e_entries = next((r["entries"] for r in ranked if r["probe"] == "E"), [])
+        e_top = e_entries[0] if e_entries else None
+        e_final = (e_top or {}).get("final")
+        if e_entries and relevant_query_tops:
+            threshold = min(relevant_query_tops)
+            strictly_below = isinstance(e_final, (int, float)) and float(e_final) < threshold
+            results.append(
+                TestResult(
+                    test_id="H-4E-ASSERT",
+                    capability="Abstention feasibility: vague query ranks strictly below all relevant queries",
+                    tool="hindsight-client",
+                    result=PASS if strictly_below else FAIL,
+                    observed=(
+                        f"vague_query_top_final={e_final}; min_relevant_query_top_final={threshold}; "
+                        f"strictly_below={strictly_below}"
+                    ),
+                    design_impact=(
+                        "Determines whether abstention can use a relative score floor; absolute scores are "
+                        "documented as non-calibrated, so a fixed numeric threshold is unsafe"
+                    ),
+                    reproducible="python -m m0.run_all",
+                    details={"relevant_query_tops": [round(v, 6) for v in relevant_query_tops]},
+                )
+            )
+        else:
+            results.append(
+                TestResult(
+                    test_id="H-4E-ASSERT",
+                    capability="Abstention feasibility: vague query ranks strictly below all relevant queries",
+                    tool="hindsight-client",
+                    result=BLOCKED,
+                    observed="Insufficient measurements: no vague-query top score or no relevant-query baselines",
+                    design_impact="Abstention feasibility undetermined",
                     reproducible="python -m m0.run_all",
                 )
             )
@@ -307,4 +434,9 @@ def run_all_hindsight(app: AppConfig) -> list[TestResult]:
             reproducible="python -m m0.run_all",
         ),
     )
+
+    try:
+        client.close()
+    except Exception:  # noqa: BLE001
+        pass
     return results
