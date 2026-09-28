@@ -1,7 +1,8 @@
 # Phase 1 Improvement Plan — against the hackathon criteria
 
 **Date:** 2026-09-28, 22:45 IST · **Deadline:** MVP + submission 29 Sept afternoon (~15 h, incl. sleep).
-**Base:** `integration/phase1` @ `1f29c30` plus the fixes on `mukul/phase1-fixes` (7 commits, 235 tests).
+**Base:** `integration/phase1` @ `1f29c30` plus the fixes on `mukul/phase1-fixes` (235 tests).
+**What exists today:** `docs/phase1-implemented.md`. **Phase 2 plan:** section 7 below.
 **Evidence:** fresh-bank dry runs on 2026-09-28 (banks `demo-dryrun-*`, never the shared or recording bank).
 
 ## 1. Where Phase 1 stands against the judging criteria
@@ -42,12 +43,28 @@
 | 5 | **README from a clean checkout**: install (`hindsight-client==0.10.1`), `.env` fields, fresh bank + ledger, seed, run, `inspect` | Technical 20% (DoD 1) | Mukul | 30 min | README section exists on the branch; verify on a clean clone |
 | 6 | **Pin `hindsight-client==0.10.1`** in `pyproject.toml` | Technical | Rama | 2 min | open |
 
+### P0 #4 in detail — slim input flow
+
+Today one resolved session asks about **25** things; the target is about **6**, with every trust rule kept.
+
+| Stage | Today | Slim flow | Trust rule kept |
+|---|---|---|---|
+| Describe the issue | 3 blocks (description, measurements, facts) | **1 paste box**: description, `key=value` lines and log lines together; the normalizer already sorts them | Unstated values stay `unknown` |
+| Current facts | always asked | asked **only** when a field a cited case depends on is missing | Missing evidence ⇒ `insufficient_evidence` |
+| Verify | up to 4 questions × 3 hypotheses = 12 | *"Which will you pursue? [H1/H2/H3/none]"* then one answer such as `s y` (supported, past case relevant) | Every hypothesis still gets a logged decision; unpursued ones = `reject` + note "not pursued" |
+| Resolve | 7 questions | *"What fixed it?"* (blank = not resolved), *"What did you observe?"*, one-letter outcome, optional failed approaches; evidence refs optional | Only a reported resolution is retained; failed approaches still captured; the observed result is never defaulted |
+| Repeatable input | none | `--file issue.txt` feeds the paste box | Same code path as typed input |
+
+Two decisions taken: unpursued hypotheses use `reject` + note (no contract change); "what did you observe"
+stays a required question (it is the verification evidence and must not be invented).
+
 ### P1 — improves the submission if time allows
 
 | # | Item | Criteria | Owner | Size | Risk |
 |---|---|---|---|---|---|
 | 7 | Rewrite the 6 seeds as realistic incident write-ups (real error strings, tool names, log excerpts; still fictional systems) | Impact 10%, "realistic data" | Rama | 1 h | **re-rehearse all acts** (scores shift) |
 | 8 | Recording aids: a one-line "memory state" banner (bank, cases, last retained id); a `--quiet` flag to hide the log lines on camera | UX | Mukul | 30 min | low |
+| 10 | **Citation gate for contradictory cases**: `citable()` excludes `contradictory` candidates (from Rama's VLSI probe). Act 3 then shows both sides and stays generic on every bank | Innovation (trust), demo stability | Mukul | 20 min | low; re-run Act 3 once |
 | 9 | Merge the layered refactor (`mukul-loop`: controllers / services / domain / ports / adapters / views + architecture test) | Technical 20% | Mukul + Rama | 3 h | moves every file under a rehearsed demo — **do after recording, before submission**, or in Phase 2 |
 
 ### Deliberately not in Phase 1
@@ -90,3 +107,24 @@ backup take, never narrate thresholds as validated.
 | 10:30–11:30 | Full rehearsal on a fresh bank: Acts 1 → 2 → 2b → 3 → 4 | Rehearsal review |
 | 11:30–13:00 | Record the demo (+ backup take) | Article draft |
 | 13:00–afternoon | Article, social post, submission checklist | Article, social post |
+
+## 7. Phase 2 (after submission, target 2 Oct)
+
+Inputs: the limitations in `docs/phase1-implemented.md` §6, tonight's fresh-bank dry runs, and Rama's
+synthetic VLSI evaluation (trust boundary held; retrieval did not generalise). Phase 2 is about making
+retrieval **trustworthy across banks and domains** and taking the typing out of the engineer's day.
+
+| # | Theme | Work | Owner | Exit criterion | Source |
+|---|---|---|---|---|---|
+| 2.1 | **Retrieval calibration** | Labelled query set per domain (relevant / partial / vague / irrelevant / contradictory); record `final` and `semantic` scores across several fresh banks; set thresholds per domain; expose `semantic_floor` and `contradiction_margin` through config (contract L5) | Rama | Irrelevant queries abstain on every bank in the set; results recorded raw | L1, L5; false "relevant" matches (payments-api, checkout-api, VLSI) |
+| 2.2 | **Conflict handling** | Group recalled cases by normalized root cause instead of one margin; keep contradictory cases non-citable (P1 #10, if not done); multi-case conflict tests | Rama + Mukul | Act 3-style conflicts behave the same on every fresh bank | L2, L3; Rama's VLSI "unstable with multiple conflicts" |
+| 2.3 | **Domain-neutral memory** | Store **every** environment key in metadata (`env.<key>`); rebuild the environment from them on recall; taxonomy as per-domain config for the normalizer | Rama (store) + Mukul (normalizer) | VLSI context (node, PVT corner, tool, stage) survives retain → recall → comparison | L4; Rama's VLSI finding |
+| 2.4 | **Second domain: VLSI** | Realistic seed set from Rama's evaluation; domain taxonomy; calibration pass (2.1) for it | Rama | The four-act demo runs in the VLSI domain on a fresh bank | Original project definition (VLSI persona) |
+| 2.5 | **Memory lifecycle** | Correct / retire / restore cases via the Hindsight REST API (SDK 0.10.1 has no binding); staleness policy; ledger keyed on bank id, or backend idempotency | Rama | A wrong root cause can be corrected and stops being recalled | L6, L8 |
+| 2.6 | **Input capture** | Issue from a ticket, alert or CI failure; environment from deploy metadata; resolution and failed approaches extracted from the fix PR description, confirmed with one keystroke (a second LLM call per session); retention proposed when the fix merges, still engineer-approved | Mukul | A session started from a ticket needs ≤ 3 engineer inputs | L7; "too manual" feedback |
+| 2.7 | **Code structure** | Integrate the layered refactor (`mukul-loop`) onto the integration branch; architecture test in CI; console entry point `debugagent` | Mukul + Rama | One structure, all tests green, entry point installed | Technical criterion |
+| 2.8 | **Evaluation record** | Paired with/without-memory runs on the same issues: recall precision (engineer-marked relevance), failed approaches avoided, verification discipline; raw observations, no invented numbers | both | A published table of raw observations per run | Project definition, evaluation plan |
+| 2.9 | **Realistic data** | Rewrite seeds as realistic incident write-ups (real error strings, tool names, log excerpts; fictional systems) | Rama | Seeds read like real post-incident notes | L9; organizer "realistic data" |
+
+**Order:** 2.1 and 2.3 first (every later item depends on trustworthy retrieval), then 2.2 and 2.4, then
+2.5–2.9. Out of Phase 2: a web UI, multi-user team banks, automatic fix execution.

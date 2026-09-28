@@ -11,6 +11,12 @@ DEFAULT_MAX_TOKENS = 1024
 DEFAULT_MIN_FINAL_SCORE = 0.05
 DEFAULT_WEAK_REFERENCE_FLOOR = 0.6
 DEFAULT_STALE_AFTER_DAYS = 365
+# Provisional, raised from 0.70 on 2026-09-28 from every semantic score measured when `final` was below its
+# floor: unrelated cases 0.641, 0.678 (Rama's rehearsals), 0.7016, 0.7084 (fresh-bank rehearsal: batch-runner
+# admitted for a billing issue, media-uploader for an orders-api issue); vague 0.766 (M0); genuine collapsed
+# match 0.78 (M1, 26+ cases) and 0.788 (unit tests). 0.75 rejects every unrelated case measured and keeps every
+# genuine fallback match. Still a calibration parameter, not a validated constant (Phase 2, item 2.1).
+DEFAULT_SEMANTIC_FLOOR = 0.75
 
 
 def _get(name: str, default: str = "") -> str:
@@ -44,6 +50,7 @@ class MemoryConfig:
     stale_after_days: int
     recall_types: tuple[str, ...]
     ledger_path: Path
+    semantic_floor: float = DEFAULT_SEMANTIC_FLOOR
 
     @property
     def configured(self) -> bool:
@@ -69,6 +76,7 @@ def load_memory_config(data_dir: str | None = None) -> MemoryConfig:
         min_final_score=_float("DEBUGAGENT_MIN_FINAL_SCORE", DEFAULT_MIN_FINAL_SCORE),
         weak_reference_floor=_float("DEBUGAGENT_WEAK_REFERENCE_FLOOR", DEFAULT_WEAK_REFERENCE_FLOOR),
         stale_after_days=_int("DEBUGAGENT_STALE_AFTER_DAYS", DEFAULT_STALE_AFTER_DAYS),
+        semantic_floor=_float("DEBUGAGENT_SEMANTIC_FLOOR", DEFAULT_SEMANTIC_FLOOR),
         recall_types=("world", "experience"),
         ledger_path=ledger,
     )
