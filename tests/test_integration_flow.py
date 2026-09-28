@@ -114,6 +114,12 @@ class AdapterRecallTests(unittest.TestCase):
         self.assertIn("upstream proxy request-size limit", candidate["text"])
         self.assertEqual(candidate["outcome"], "resolved")
 
+    def test_unrecorded_environment_fields_are_dropped_not_passed_as_values(self):
+        no_runtime = FakeMemory(text=CASE_A.text, scores=CASE_A.scores,
+                                metadata=dict(CASE_A.metadata, runtime="unknown"))
+        view = port_with(FakeHindsightClient([no_runtime])).recall_and_classify(RELEVANT_QUERY)
+        self.assertEqual(view["report"]["candidates"][0]["environment"], {"service": "orders-api"})
+
     def test_irrelevant_case_is_excluded_but_kept_in_the_trace(self):
         view = port_with(orders_bank()).recall_and_classify(RELEVANT_QUERY)
         excluded = {c["case_id"]: c for c in view["report"]["excluded"]}
