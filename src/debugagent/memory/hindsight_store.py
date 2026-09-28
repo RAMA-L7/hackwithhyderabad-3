@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 import json
 import os
 import tempfile
@@ -51,24 +52,34 @@ def case_tags(case: MemoryCase) -> list[str]:
     return tags
 
 
+MAX_FACTS_PER_CASE = 8  # bounds prompt size; a retained case produced 6 fact rows when measured live
+
+
 def dedupe_by_case(items: list[RecallResult]) -> list[RecallResult]:
-    """Collapse recall rows to one row per retained case, keeping the best row.
+    """Collapse recall rows to one row per retained case: the best row's scores, all its facts.
 
     Measured live on 2026-09-27: a bank holding 6 retained cases returned 35 recall rows,
     i.e. Hindsight emits several rows per stored memory (different chunk text, different
     scores, same `case_key`). Returning those rows as separate cases would duplicate
     provenance and inflate the candidate list, so the contract's one-row-per-memory intent
     is enforced here. Ties on `score_final` fall back to `score_semantic`, then first seen.
+
+    Measured live on 2026-09-28: the rows are not copies of one text. Hindsight extracts one
+    retained case into separate facts (the symptom, the failed approach, the resolution).
+    Keeping only the best row's text therefore dropped the failed approach and the fix before
+    they reached the pipeline, so the agent could not warn against a known-failed approach and
+    once recommended it. The distinct row texts are now joined, best row first; scores and
+    ordering still come from the best row only.
     """
-    best: dict[str, RecallResult] = {}
+    rows: dict[str, list[RecallResult]] = {}
     for item in items:
-        current = best.get(item.case_id)
-        if current is None or (item.score_final, item.score_semantic or 0.0) > (
-            current.score_final,
-            current.score_semantic or 0.0,
-        ):
-            best[item.case_id] = item
-    return list(best.values())
+        rows.setdefault(item.case_id, []).append(item)
+    collapsed = []
+    for case_rows in rows.values():
+        ordered = sorted(case_rows, key=lambda r: (r.score_final, r.score_semantic or 0.0), reverse=True)
+        facts = list(dict.fromkeys(t for t in (r.text.strip() for r in ordered) if t))[:MAX_FACTS_PER_CASE]
+        collapsed.append(replace(ordered[0], text=" | ".join(facts)))
+    return collapsed
 
 
 def render_content(case: MemoryCase) -> str:

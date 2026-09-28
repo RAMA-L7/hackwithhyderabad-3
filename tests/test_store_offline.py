@@ -255,16 +255,35 @@ class DedupeTests(unittest.TestCase):
         low = self.make_result("case-a", 0.50, "low semantic", semantic=0.10)
         high = self.make_result("case-a", 0.50, "high semantic", semantic=0.90)
         out = dedupe_by_case([low, high])
-        self.assertEqual(out[0].text, "high semantic")
+        self.assertEqual(out[0].score_semantic, 0.90)
+        self.assertEqual(out[0].text, "high semantic | low semantic", "best row's fact first")
 
     def test_dedupe_is_stable_for_identical_rows(self):
         first = self.make_result("case-a", 0.50, "first")
         second = self.make_result("case-a", 0.50, "second")
         out = dedupe_by_case([first, second])
-        self.assertEqual(out[0].text, "first")
+        self.assertEqual(out[0].text, "first | second", "ties keep first-seen order")
 
     def test_empty_input(self):
         self.assertEqual(dedupe_by_case([]), [])
+
+    def test_all_facts_of_a_case_survive_dedupe(self):
+        # live 2026-09-28: one retained case came back as separate symptom / failed-approach / fix rows
+        items = [
+            self.make_result("case-a", 0.9, "uploads over 2MB reset the connection"),
+            self.make_result("case-a", 0.4, "raising the client timeout to 60s had no effect"),
+            self.make_result("case-a", 0.6, "raised client_max_body_size to 10m"),
+            self.make_result("case-a", 0.4, "raising the client timeout to 60s had no effect"),
+        ]
+        out = dedupe_by_case(items)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].score_final, 0.9)
+        self.assertEqual(out[0].text, "uploads over 2MB reset the connection | raised client_max_body_size to 10m | "
+                                      "raising the client timeout to 60s had no effect")
+
+    def test_facts_per_case_are_capped(self):
+        items = [self.make_result("case-a", 1.0 - i / 100, f"fact {i}") for i in range(12)]
+        self.assertEqual(dedupe_by_case(items)[0].text.count("|"), 7)
 
 
 if __name__ == "__main__":
