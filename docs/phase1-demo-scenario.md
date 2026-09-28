@@ -95,9 +95,13 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
    recorded differs"*, and the `orders-api` proxy case as a foreign-service reference with the
    mismatch stated explicitly: *"differs from now: runtime (then python3.10, now node20), service
    (then orders-api, now media-uploader)"*. The current environment is never overwritten by a past one.
-9. **PROPOSAL** cites only ids that appear in MEMORY (rehearsal: H1 cited `2bf03cc80118b00a`; the
-   other two cited nothing and were labelled `generic`), warns against approaches a past case records
-   as failed, and lists a refutation condition for each.
+9. **MEMORY** shows the seed's full original environment (`proxy=nginx-1.25, region=us-east-1`) and ends
+   the past case with *"Failed before: raised the uploader client timeout (why it failed: …)"*. **PROPOSAL**
+   cites only ids that appear in MEMORY (dry run on `mukul/phase1-fixes`, fresh bank: H1 cited
+   `2bf03cc80118b00a` and proposed the recorded fix, raising `client_max_body_size`, first), does not
+   recommend the approach MEMORY marks as failed, and lists a refutation condition for each.
+   *Before the fixes on `mukul/phase1-fixes`, recall kept only the symptom fact, so neither the fix nor
+   the failed approach reached the prompt; the model once recommended raising timeouts.*
 10. **EVIDENCE** shows only current-case facts. Fields the engineer did not state stay **unknown** and
     are listed; they are never filled in from memory.
 11. **DECISION** records accept/modify/reject, the engineer's note, and whether the past case was
@@ -106,16 +110,20 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 
 ## Act 3 — Disagreeing history
 
-*Rehearsed 2026-09-28: abstained=True, class=contradictory, 2 candidates, margin 0.1449 < 0.2.*
+*Rehearsed 2026-09-28 (Rama): abstained=True, class=contradictory, 2 candidates, margin 0.1449 < 0.2.*
+*Dry runs on fresh banks (Mukul, `mukul/phase1-fixes`, twice): class=contradictory, the same 2 candidates,
+**abstained=False** (one side led by the margin), both hypotheses citing them labelled `conditional`.*
 
 13. *"orders-api large payloads are rejected by the proxy with 502"* (`service=orders-api`).
 14. The bank holds two `orders-api` cases with the **same symptoms and different root causes**: an
     upstream proxy request-size limit, and an upstream dependency returning 502.
-15. **MEMORY** shows **both**, each `contradictory` with `conflicts with` naming the other, and says
-    *"recalled cases disagree on root cause with no clear leader (margin 0.1449 < 0.2)"*. The layer
-    abstains rather than silently picking one.
-16. **PROPOSAL** stays `generic` with no citations, and **nothing is retained** — the engineer is not
-    asked to resolve an issue the history cannot inform.
+15. **MEMORY** shows **both**, each `contradictory` with `conflicts with` naming the other. Whether the
+    layer also abstains depends on the score margin, which varies between fresh banks (Hindsight's fact
+    extraction is LLM-based). **Narrate the stable behaviour, not the abstention:** *"conflicting history
+    is surfaced side by side, never resolved by the agent."*
+16. **PROPOSAL** either stays `generic` (abstained) or labels every hypothesis that cites one side
+    `memory-backed · past cases disagree` (`conditional`). Answer **n** to "Did you resolve the issue?"
+    so **nothing is retained**; the CLI does ask.
 
 > **This query was also changed.** "orders-api returns 502 for payloads above 2 MB" surfaced a third,
 > unrelated `checkout-api` case as `relevant`, which outranked the pair and suppressed the
@@ -128,9 +136,10 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 3. Second issue: relevant historical case recalled **with its original conditions**.
 4. Similarities *and* differences are stated; a foreign-service case is shown with its environment
    mismatch, never merged into the current environment.
-5. Proposal is reprioritised and cites memory; a previously failed approach is flagged.
+5. Proposal is reprioritised and cites memory; MEMORY shows the approach that failed before, and the
+   proposal does not repeat it.
 6. Engineer verification is explicit and logged; the CLI never presents a proposal as verified.
-7. Disagreeing history is surfaced as a conflict rather than resolved by the agent.
+7. Disagreeing history is surfaced side by side as a conflict, never resolved by the agent.
 
 ## Rehearsal record (2026-09-28, live Hindsight Cloud + real LLM)
 
