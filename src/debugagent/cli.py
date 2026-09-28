@@ -221,7 +221,8 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         return 130
     except (AbortSession, InputError, NormalizationError, SchemaError, EvidenceError, VerificationError,
             MemoryFailure, LLMError) as exc:
-        print(f"error: {exc}", file=err)
+        # one line, always: backend messages can carry newlines and raw HTTP headers (Hindsight 504, 2026-09-28)
+        print(f"error: {' '.join(str(exc).split())[:300]}", file=err)
         return 1
     finally:
         # Release the backend's HTTP session on every exit path. The Hindsight client opens an

@@ -107,6 +107,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("observation: requests time out after 30 s", out)
 
+    def test_multiline_backend_error_prints_as_one_line(self):
+        failure = MemoryFailure("unavailable", "retain failed (ServiceException: (504)\nReason: Gateway Timeout\nHTTP response headers: <...>)")
+        code, _, err = self.run_cli(["debug"], SCRIPT, port=FakeMemoryPort(fail=failure))
+        self.assertEqual(code, 1)
+        lines = [line for line in err.splitlines() if line.startswith("error:")]
+        self.assertEqual(lines, ["error: memory unavailable: retain failed (ServiceException: (504) Reason: Gateway Timeout "
+                                 "HTTP response headers: <...>)"])
+
     def test_bad_answer_is_re_asked(self):
         lines = SCRIPT[:8] + ["maybe"] + SCRIPT[8:]
         code, out, err = self.run_cli(["debug"], lines, port=FakeMemoryPort(RELEVANT_VIEW))
