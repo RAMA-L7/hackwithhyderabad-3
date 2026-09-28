@@ -1,0 +1,200 @@
+{
+  "domain": "synthetic-service-api-runtime-failures",
+  "synthetic": true,
+  "notice": "All companies, services, versions and identifiers below are fictional and invented for demonstration.",
+  "cases": [
+    {
+      "case_id": "seed-001",
+      "session_id": "seed-v1",
+      "problem_signature": "intermittent connection reset after request payload exceeds 2MB on orders-api",
+      "symptoms": [
+        "client observes ECONNRESET on payloads above 2MB",
+        "small payloads succeed consistently"
+      ],
+      "environment": {
+        "service": "orders-api",
+        "runtime": "python3.10",
+        "proxy": "envoy-1.4",
+        "region": "eu-west-1"
+      },
+      "observed_evidence": [
+        "report://orders-api/2026-02-11/payload-matrix.csv",
+        "log://orders-api/2026-02-11/envoy-upstream.log"
+      ],
+      "investigation_trace": [
+        "reproduced with a payload size sweep",
+        "compared reset threshold against proxy configuration",
+        "read the proxy upstream log for the failing requests"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "raised the client socket timeout to 60s",
+          "why_failed": "the proxy closed the stream before the client timeout applied"
+        }
+      ],
+      "root_cause": "upstream proxy request-size limit truncated the stream",
+      "resolution": "raised proxy max_request_bytes to 8MB and re-ran the payload sweep",
+      "outcome": "resolved",
+      "verification_notes": "synthetic case; the fix was confirmed by re-running the payload sweep with no resets above 2MB"
+    },
+    {
+      "case_id": "seed-002",
+      "session_id": "seed-v1",
+      "problem_signature": "orders-api returns HTTP 502 only for payloads above 2MB",
+      "symptoms": [
+        "HTTP 502 for payloads above 2MB",
+        "HTTP 200 for smaller payloads"
+      ],
+      "environment": {
+        "service": "orders-api",
+        "runtime": "python3.10",
+        "proxy": "none",
+        "region": "eu-west-1"
+      },
+      "observed_evidence": [
+        "report://orders-api/2026-03-04/upstream-502-body.json"
+      ],
+      "investigation_trace": [
+        "captured the upstream 502 body instead of the local response",
+        "checked whether a proxy was present in front of the service"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "restarted the pods to clear suspected connection state",
+          "why_failed": "the symptom returned within minutes of the restart"
+        }
+      ],
+      "root_cause": "upstream dependency returned 502 for oversized request bodies",
+      "resolution": "upstream team corrected body handling; no proxy change was made",
+      "outcome": "resolved",
+      "verification_notes": "synthetic case; shares symptoms with seed-001 but has a different root cause and no proxy present"
+    },
+    {
+      "case_id": "seed-003",
+      "session_id": "seed-v1",
+      "problem_signature": "large file uploads fail with connection reset behind nginx on media-uploader",
+      "symptoms": [
+        "upload endpoint resets the connection for files above 2MB",
+        "uploads below 2MB complete normally"
+      ],
+      "environment": {
+        "service": "media-uploader",
+        "runtime": "node20",
+        "proxy": "nginx-1.25",
+        "region": "us-east-1"
+      },
+      "observed_evidence": [
+        "report://media-uploader/2026-01-22/nginx-error.log"
+      ],
+      "investigation_trace": [
+        "correlated failures with the request body size",
+        "searched the reverse proxy error log for the failing requests"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "raised the uploader client timeout",
+          "why_failed": "the reverse proxy rejected the request before the client was involved"
+        }
+      ],
+      "root_cause": "reverse proxy request body limit rejected the upload",
+      "resolution": "raised nginx client_max_body_size and re-tested uploads",
+      "outcome": "resolved",
+      "verification_notes": "synthetic case; same failure class as seed-001 but a different service, runtime and proxy"
+    },
+    {
+      "case_id": "seed-004",
+      "session_id": "seed-v1",
+      "problem_signature": "nightly batch job finishes 40 minutes late after growing run time",
+      "symptoms": [
+        "batch completion time grew from 20 to 60 minutes over two weeks",
+        "job still completes successfully"
+      ],
+      "environment": {
+        "service": "batch-runner",
+        "runtime": "python3.10",
+        "scheduler": "cron",
+        "region": "eu-west-1"
+      },
+      "observed_evidence": [
+        "report://batch-runner/2026-01-08/run-durations.csv"
+      ],
+      "investigation_trace": [
+        "compared run durations day by day",
+        "listed the slowest queries observed during the run"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "added two more batch workers",
+          "why_failed": "the bottleneck was per-row query cost, not concurrency"
+        }
+      ],
+      "root_cause": "unindexed lookup table made per-row queries scan the table",
+      "resolution": "added the missing index; runtime returned to 20 minutes",
+      "outcome": "resolved",
+      "verification_notes": "synthetic case; intentionally unrelated to any network or payload failure family"
+    },
+    {
+      "case_id": "seed-005",
+      "session_id": "seed-v1",
+      "problem_signature": "sporadic p99 latency spike on checkout-api lasting about 30 seconds",
+      "symptoms": [
+        "p99 latency reaches 3x baseline for short bursts",
+        "no error rate increase observed"
+      ],
+      "environment": {
+        "service": "checkout-api",
+        "runtime": "python3.10",
+        "region": "eu-west-1"
+      },
+      "observed_evidence": [
+        "report://checkout-api/2026-02-02/latency-spike.png"
+      ],
+      "investigation_trace": [
+        "correlated spikes with deploy windows",
+        "checked garbage collection pauses during the spikes"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "increased the container memory limit",
+          "why_failed": "pause behaviour was unchanged after the limit increase"
+        }
+      ],
+      "root_cause": null,
+      "resolution": "workaround: rescheduled the batch job away from the checkout host",
+      "outcome": "workaround",
+      "verification_notes": "synthetic case; root cause never confirmed, retained deliberately as a partial-match and abstain probe"
+    },
+    {
+      "case_id": "seed-006",
+      "session_id": "seed-v1",
+      "problem_signature": "stale connection pool exhaustion on payments-api during peak traffic",
+      "symptoms": [
+        "requests fail with pool exhausted errors for roughly 5 minutes",
+        "traffic returns to normal without intervention"
+      ],
+      "environment": {
+        "service": "payments-api",
+        "runtime": "python3.10",
+        "proxy": "envoy-1.4",
+        "region": "us-east-1"
+      },
+      "observed_evidence": [
+        "report://payments-api/2026-03-19/pool-metrics.json"
+      ],
+      "investigation_trace": [
+        "captured pool saturation during the failure window",
+        "compared checkout rates against pool return times"
+      ],
+      "failed_approaches": [
+        {
+          "approach": "raised the pool size to 200 connections",
+          "why_failed": "connections were checked out and never returned, so a larger pool only delayed exhaustion"
+        }
+      ],
+      "root_cause": "connections were leaked by a retry path and never returned to the pool",
+      "resolution": "fixed the retry path to release connections, then restored the original pool size",
+      "outcome": "resolved",
+      "verification_notes": "synthetic case; distinct from the payload-size family and from the latency case"
+    }
+  ]
+}

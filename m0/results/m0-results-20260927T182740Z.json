@@ -1,0 +1,138 @@
+[
+  {
+    "test_id": "RT-1",
+    "capability": "Primary (OpenRouter Space Bunny Alpha) availability (plain chat completion)",
+    "tool": "openrouter",
+    "result": "PASS",
+    "observed": "HTTP 200, non-empty content (5 chars), usage present=True",
+    "design_impact": "Confirms the primary route is usable; if unavailable the demo runbook must start on fallback",
+    "latency_ms": 1657,
+    "error_class": null,
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "model": "stealth/space-bunny-alpha"
+    },
+    "timestamp_utc": "2026-09-27T18:27:42+00:00"
+  },
+  {
+    "test_id": "RT-4",
+    "capability": "Fallback (Baseten DeepSeek V4.1 Flash) availability (plain chat completion)",
+    "tool": "baseten",
+    "result": "PASS",
+    "observed": "HTTP 200, non-empty content (5 chars), usage present=True",
+    "design_impact": "Fallback is the safety net; M1 is blocked until this passes",
+    "latency_ms": 1604,
+    "error_class": null,
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash"
+    },
+    "timestamp_utc": "2026-09-27T18:27:43+00:00"
+  },
+  {
+    "test_id": "RT-2",
+    "capability": "Primary (OpenRouter Space Bunny Alpha) structured output (response_format json_schema) + local validation",
+    "tool": "openrouter",
+    "result": "FAIL",
+    "observed": "Provider error: {\"error\":{\"message\":\"No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection\",\"code\":404,\"metadata\":{\"routing_funnel\":[{\"step\":\"Initial Endpoints\",\"endpoint_count\":1}],\"failed_routing_step\"",
+    "design_impact": "Decides whether proposal paths can use primary natively or must validate-and-retry",
+    "latency_ms": null,
+    "error_class": "MODEL_NOT_FOUND",
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "model": "stealth/space-bunny-alpha",
+      "status": 404
+    },
+    "timestamp_utc": "2026-09-27T18:27:43+00:00"
+  },
+  {
+    "test_id": "RT-5",
+    "capability": "Fallback (Baseten DeepSeek V4.1 Flash) structured output (response_format json_schema) + local validation",
+    "tool": "baseten",
+    "result": "PASS",
+    "observed": "Response parsed and validated against hypothesis schema",
+    "design_impact": "Confirms fallback satisfies the same structured-output contract",
+    "latency_ms": 3763,
+    "error_class": null,
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "completion_tokens": 809,
+      "raw_length": 233
+    },
+    "timestamp_utc": "2026-09-27T18:27:47+00:00"
+  },
+  {
+    "test_id": "RT-3",
+    "capability": "Primary error classification (unknown model + bad key)",
+    "tool": "openrouter",
+    "result": "FAIL",
+    "observed": "observed={'unknown_model': 'BAD_REQUEST (status=400)', 'bad_key': 'AUTH (status=401)'}; expected={'unknown_model': 'MODEL_NOT_FOUND', 'bad_key': 'AUTH'}",
+    "design_impact": "Confirms documented codes map to MODEL_NOT_FOUND/AUTH so failover skips them",
+    "latency_ms": null,
+    "error_class": "MISMATCH",
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "provider": "openrouter"
+    },
+    "timestamp_utc": "2026-09-27T18:27:47+00:00"
+  },
+  {
+    "test_id": "RT-6",
+    "capability": "Primary\u2192fallback routing on unavailable primary (unreachable base URL)",
+    "tool": "router",
+    "result": "PASS",
+    "observed": "attempts=[{'provider': 'openrouter', 'base_url': 'http://127.0.0.1:9', 'outcome': 'error:UNAVAILABLE'}, {'provider': 'baseten', 'base_url': 'https://inference.baseten.co/v1', 'outcome': 'served'}]; served_by=baseten; fallback_used=True",
+    "design_impact": "Failover is a demo-day requirement; this drill gates the router design",
+    "latency_ms": 6941,
+    "error_class": null,
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "expected_fallback": "baseten"
+    },
+    "timestamp_utc": "2026-09-27T18:27:54+00:00"
+  },
+  {
+    "test_id": "RT-8",
+    "capability": "Auth error must NOT trigger failover",
+    "tool": "router",
+    "result": "PASS",
+    "observed": "primary error=AUTH; failover_triggered=False",
+    "design_impact": "Team rule: auth errors must not silently fail over",
+    "latency_ms": null,
+    "error_class": "AUTH",
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "status": 401
+    },
+    "timestamp_utc": "2026-09-27T18:27:54+00:00"
+  },
+  {
+    "test_id": "RT-7",
+    "capability": "Structured-call latency calibration (timeout budget sizing)",
+    "tool": "openrouter,baseten",
+    "result": "FAIL",
+    "observed": "latency_ms_by_provider={'openrouter': -1, 'baseten': 8549} (-1 means error)",
+    "design_impact": "Sets LLM_TIMEOUT_S and retry budget so primary+fallback fits demo latency",
+    "latency_ms": null,
+    "error_class": null,
+    "reproducible": "python -m m0.run_all",
+    "details": {
+      "configured_timeout_s": 30
+    },
+    "timestamp_utc": "2026-09-27T18:28:03+00:00"
+  },
+  {
+    "test_id": "H-1",
+    "capability": "Hindsight service connectivity",
+    "tool": "hindsight-client",
+    "result": "FAIL",
+    "observed": "error: ClientConnectorError: Cannot connect to host localhost:8888 ssl:default [The remote computer refused the network connection]",
+    "design_impact": "Blocks all memory work",
+    "latency_ms": null,
+    "error_class": "ClientConnectorError",
+    "reproducible": "python -m m0.run_all",
+    "details": {},
+    "timestamp_utc": "2026-09-27T18:28:07+00:00"
+  }
+]
