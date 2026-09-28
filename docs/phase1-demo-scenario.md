@@ -169,15 +169,23 @@ two separate fresh banks, Acts 1 → 2 → 3 → 4, each checked against this sc
 
 | Bank | Seed | Act 1 | Act 2 | Act 3 | Act 4 (Act 1 recurs) |
 |---|---|---|---|---|---|
-| `demo-rehearsal-1790617985` | 6 / 0 / 0 | abstained, 3 generic, retained | seed relevant; full env + *Failed before*; H1 cites it and leads with the fix; retained | only the two orders-api cases, contradictory; nothing retained | Act 1's live case recalled and cited |
+| `demo-rehearsal-1790617985` | 6 / 0 / 0 | abstained, 3 generic, retained | seed relevant; full env + *Failed before*; H1 cites it and leads with the fix; retained | conflicting `orders-api` history surfaced; nothing retained — see the note below on how many sides appear as candidates | Act 1's live case recalled and cited |
 | `demo-rehearsal-1790618070` | 6 / 0 / 0 | same | same | same | same, served by the **fallback** (`fallback_used=True`) |
+
+> **How many conflicting sides appear as candidates was not recorded separately, and it varies.**
+> These two rehearsals are logged as "only the two orders-api cases, contradictory". A later
+> fresh-bank measurement on this branch (`semantic_floor` 0.75) observed **one** `orders-api` case
+> accepted as a `contradictory` candidate while the other was **excluded as `irrelevant`**, because its
+> `final` score had collapsed and its `semantic` score fell below the 0.75 fallback floor. Whether both
+> sides surface therefore depends on the scores, not only on the bank contents. The stable behaviour to
+> narrate is unchanged: **conflicting history is surfaced; abstention depends on the score margin.**
 
 The earlier rehearsal on `a36bad3` (floor 0.70) failed Act 1 and Act 3 on semantic-fallback false positives;
 see `docs/decision-log.md`.
 
 > **Act 3's `abstained` value is not recorded for these two post-fix runs.** The table above records that
-> Act 3 showed *only* the two `orders-api` cases, both `contradictory`, and retained nothing — but it does
-> not state whether the layer also abstained. No repository evidence establishes that value, so it is
+> Act 3 surfaced conflicting `orders-api` history and retained nothing — but it does not state whether
+> the layer also abstained. No repository evidence establishes that value, so it is
 > left unstated rather than guessed. Act 3's narrative above is written accordingly: **the guaranteed
 > behaviour is that conflicting history is surfaced side by side; abstention depends on the score margin.**
 > If you need the exact value for the recording, read it from the session trace
