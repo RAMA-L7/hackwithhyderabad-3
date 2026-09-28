@@ -30,7 +30,8 @@ RESPONSE_SCHEMA = {
     }}},
 }
 
-RULES = """You assist a debugging engineer. Propose 2 or 3 hypotheses for the CURRENT ISSUE, most likely first.
+RULES = """You assist a debugging engineer. Propose 2 or 3 hypotheses for the CURRENT ISSUE.
+Order the list most likely first; the position is the ranking.
 
 Rules:
 - The CURRENT ISSUE is the only system being debugged. Describe it only with its own facts.
@@ -41,7 +42,7 @@ Rules:
 - If a past case records a failed approach, do not recommend it again unless you say why it would differ now.
 - refutation_conditions: at least one observation that would prove the hypothesis wrong.
 - recommended_next_step: one concrete check the engineer can run now.
-- Return only JSON matching the schema."""
+- Return only JSON matching the schema, with exactly its fields: add no others (no rank, no confidence)."""
 
 
 def _env(environment: dict) -> str:
