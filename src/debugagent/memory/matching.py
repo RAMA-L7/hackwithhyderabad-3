@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from debugagent.config import DEFAULT_SEMANTIC_FLOOR
 from debugagent.schemas import (
     AbstentionDecision,
     MatchCandidate,
@@ -24,7 +25,7 @@ _TOKEN_SPLIT = set(" .:/,;()[]{}<>|_-\n\t")
 @dataclass(frozen=True)
 class AbstentionPolicy:
     min_final_score: float = 0.05
-    semantic_floor: float = 0.70
+    semantic_floor: float = DEFAULT_SEMANTIC_FLOOR  # provisional; evidence in config.py
     weak_reference_floor: float = 0.6
     stale_after_days: int = 365
     contradiction_margin: float = 0.2
