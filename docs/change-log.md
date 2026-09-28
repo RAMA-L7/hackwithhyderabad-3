@@ -714,3 +714,94 @@ via `fallback_used` as designed.
 - `docs/m1-contract.md` implementation status and limitations updated (L3 mitigated, L8, L9 added).
 
 No `.env` change, no new dependency, no Phase 2 scope. `main` untouched.
+
+## Stage 21 - Demo rehearsal on a live seeded bank; two demo queries replaced (2026-09-28)
+
+**Branch:** `integration/phase1`. Rehearsal only — **no new features, no threshold changes, no
+contract changes.** `main` untouched at `1800c62`.
+
+Rehearsal ran the documented acts through the real `debugagent.cli.main()`, the real
+`LLMRouter`, and the real Hindsight Cloud bank, on a **freshly seeded** bank
+(`debugagent-rehearsal-v2`, 6 cases). The engineer was scripted; everything else was live.
+
+### Verdict
+
+**The demo as documented FAILED its first rehearsal.** Two of the three acts did not behave as the
+scenario promised, and the cause was the same in both: thresholds that are still uncalibrated sitting
+within the margin of noise.
+
+- **Act 1 did not abstain.** The documented query ("checkout-web … missing auth cookie") put its top
+  recalled case at `semantic` **0.678** against the `semantic_floor` default of **0.70** — a margin
+  of **0.022**. It abstained on one 6-case bank and did not abstain on another. An `orders-api` case
+  was then cited for a `checkout-web` auth-cookie issue.
+- **Act 3 did not abstain.** The documented query ("orders-api returns 502 for payloads above 2 MB")
+  surfaced a third, unrelated `checkout-api` case as `relevant`; that case outranked the conflicting
+  pair, and because the abstention rule only compares the *global* best against its conflicting
+  rivals, the conflict was downgraded and the layer did not abstain.
+
+Retrieval is **deterministic within a bank** — three identical calls returned byte-identical scores —
+so this was not flakiness. The scores are query-relative, so the six-case bank that was fine on
+Tuesday is not the bank that will be there on demo day.
+
+### Fixes applied: documentation only, no code and no threshold changes
+
+Per the instruction not to move a threshold to make a demo pass, and because C2 records that threshold
+values are a **joint calibration decision** that does not exist yet, nothing in `matching.py` changed.
+Instead the two queries were replaced with ones that have real margin, chosen by measuring six
+candidates against a pristine bank:
+
+- **Act 1** → "billing-service writes duplicate invoices when the job is retried". Top `semantic`
+  **0.641**, margin **0.059** — nearly three times the previous margin.
+- **Act 3** → "orders-api large payloads are rejected by the proxy with 502". Measured
+  `abstained=True`, `relevance_class=contradictory`, margin 0.1449, with the conflict at the top.
+- **Act 2** unchanged; it had the widest margin of the three (top `final` 1.0012).
+
+Each chosen query was then confirmed stable across three consecutive calls.
+
+### Rehearsal result after the change
+
+| Step | Wall time | Outcome |
+|---|---|---|
+| Seed 6 cases, fresh bank | 24–38 s | 6 inserted, 0 skipped, 0 rejected |
+| Act 1 | 27.6 s | abstained, 0 citations, retained `d86dff414ff0b105` |
+| Act 2 | 29.7 s | 3 candidates, 1 valid citation, retained `e45829384ccf83fe` |
+| Act 3 | 11.7 s | abstained (contradictory), 0 citations, nothing retained |
+| **Total** | **~71 s** | all three acts exited 0 |
+
+All four trust sections rendered on every act on a Windows console, confirming the earlier
+`UnicodeEncodeError` fix. **The fallback provider was exercised in this run**: Act 1 was served by
+`baseten` after two primary attempts returned `INVALID_OUTPUT`, and the CLI showed `fallback_used=True`
+with the log lines. Acts 2 and 3 were served by the primary with `fallback_used=False`. Both paths
+were observed in one rehearsal.
+
+### Trust-boundary checks, all verified against the session records
+
+- Citations are always a subset of the recalled case ids; abstained acts cite nothing.
+- Evidence contained only `service`, `runtime`, `proxy`, `region` and `observation` — no recalled
+  field, case id, or past-case text ever entered it.
+- **Insufficient evidence is not upgraded.** Re-running the Act 2 issue without stating the runtime
+  gave `status=insufficient_evidence` with `mismatched_environment_fields=['runtime']`, even though
+  the engineer pressed accept, and nothing was retained.
+- Retention happened only after a recorded decision and a reported resolution; the abstained Act 3
+  retained nothing.
+- A repeated resolved case wrote a third `media-uploader` case (idempotency is keyed on signature
+  **and** session id, so a new session is a legitimately new case). All three share near-identical
+  root causes and were shown together as `relevant` with **no false contradiction**, confirming the
+  Stage 20 `contradiction_text_overlap` fix under real conditions.
+
+### New demo rule
+
+`docs/phase1-demo-scenario.md` now requires a **fresh bank per recording** and the acts in order.
+Scores are query-relative, so a bank that has been written to is not the bank the numbers were
+measured on. This is the operational consequence of limitation L8 and it is not optional.
+
+### Recorded for the joint C2 calibration (no change made)
+
+The rehearsal gives the first real evidence for `semantic_floor`. On a six-case bank, irrelevant
+retrievals reached `semantic` up to **0.678**, while genuinely relevant ones were **0.777–0.871**.
+The current default of **0.70** sits only 0.022 above the observed noise ceiling, which is why Act 1
+was unstable. The measured gap suggests a floor nearer 0.72–0.75, but that is a joint decision under
+C2 and was deliberately **not** applied unilaterally. Same for the abstention rule in Act 3, which
+only abstains when the global best is one of the conflicting cases.
+
+`main` and `origin/main` untouched at `1800c62`. No `.env` change, no new dependency.
