@@ -37,13 +37,13 @@ def build_evidence(case: NormalizedDebugCase, *, source: str = "engineer", captu
     return Evidence(items, _unknown(items))
 
 
-def add_facts(evidence: Evidence, facts: dict[str, str | None], *, source: str = "engineer",
-              captured_at: str | None = None) -> Evidence:
-    """Append facts. Filling an unknown field replaces its placeholder; restating a known field with a
-    different value fails closed. Returns a new Evidence; the original is unchanged."""
+def add_facts(evidence: Evidence, facts, *, source: str = "engineer", captured_at: str | None = None) -> Evidence:
+    """Append facts: a name -> value mapping, or (name, value) pairs so several observations can be given.
+    Filling an unknown field replaces its placeholder; restating a known field with a different value fails
+    closed. Returns a new Evidence; the original is unchanged."""
     at = captured_at or now_utc()
     items = list(evidence.items)
-    for name, value in facts.items():
+    for name, value in (facts.items() if isinstance(facts, dict) else facts):
         name = name.strip().lower()
         value = value.strip() if isinstance(value, str) and value.strip() else None
         if name == OBSERVATION:

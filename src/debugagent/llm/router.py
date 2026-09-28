@@ -105,7 +105,17 @@ def classify_status(status: int, body: Any) -> str | None:
     return mapped.get(status, "UNAVAILABLE" if status >= 500 else "CLIENT_ERROR")
 
 
-def extract_json(body: dict) -> tuple[dict | None, str]:
+def wrap_bare_array(value, schema: dict | None):
+    """A hint-mode model sometimes returns the list without its single required wrapper key (live flow
+    test, 2026-09-28: Space Bunny). Wrap it back; full schema validation still runs afterwards."""
+    required = (schema or {}).get("required", [])
+    props = (schema or {}).get("properties", {})
+    if isinstance(value, list) and len(required) == 1 and props.get(required[0], {}).get("type") == "array":
+        return {required[0]: value}
+    return value
+
+
+def extract_json(body: dict, schema: dict | None = None) -> tuple[dict | None, str]:
     """Pull the JSON object out of a chat completion. Returns (data, problem); data is None when invalid."""
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
@@ -126,6 +136,7 @@ def extract_json(body: dict) -> tuple[dict | None, str]:
         data = json.loads(text)
     except json.JSONDecodeError:
         return None, "content is not JSON"
+    data = wrap_bare_array(data, schema)
     if not isinstance(data, dict):
         return None, "JSON root is not an object"
     return data, ""
@@ -207,9 +218,12 @@ class LLMRouter:
         """Return validated JSON, or raise. `check` adds caller rules (e.g. citation integrity)
         whose failure counts as invalid output: retried, then failed over, never returned."""
         attempts: list[dict] = []
-        plan = [(self.primary, 1 + self.retries_on_invalid), (self.fallback, 1)]
-        for index, (route, tries) in enumerate(plan):
-            for _ in range(tries):
+        # both routes get the same single retry on invalid output (live flow test 2026-09-28: with the
+        # primary down, one bad fallback answer ended the session)
+        tries = 1 + self.retries_on_invalid
+        plan = [(self.primary, tries), (self.fallback, tries)]
+        for index, (route, route_tries) in enumerate(plan):
+            for _ in range(route_tries):
                 data, record = self._attempt(route, prompt, schema, name, check)
                 attempts.append(record)
                 if data is not None:
@@ -257,7 +271,7 @@ class LLMRouter:
             if error_class:
                 detail = (text or "")[:200]
             else:
-                data, detail = extract_json(body)
+                data, detail = extract_json(body, schema)
                 problems = ([detail] if data is None else validate(data, schema)) or (check(data) if check else [])
                 if problems:
                     data, error_class, detail = None, "INVALID_OUTPUT", "; ".join(problems)[:300]

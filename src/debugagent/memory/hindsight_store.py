@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 import json
 import os
 import tempfile
@@ -33,14 +34,26 @@ def compute_case_key(case: MemoryCase, session_id: str) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
+# Environment keys carried in metadata. Metadata is stored verbatim; the case text is not (Hindsight
+# extracts it into LLM-chosen facts, measured live 2026-09-28 to drop proxy/region per bank).
+ENV_METADATA_KEYS = ("service", "runtime", "proxy", "region")
+MAX_FAILED_APPROACHES_CHARS = 500
+
+
 def case_metadata(case: MemoryCase, case_key: str) -> dict[str, str]:
-    return {
+    metadata = {
         "case_key": case_key,
         "outcome": case.outcome,
-        "service": case.environment.get("service", "unknown"),
-        "runtime": case.environment.get("runtime", "unknown"),
+        **{key: case.environment.get(key, "unknown") for key in ENV_METADATA_KEYS},
         "root_cause_key": (case.root_cause or "unconfirmed").strip().lower()[:64],
     }
+    if case.failed_approaches:
+        # Stored verbatim so recall can always show it: live on 2026-09-28 Hindsight's extraction kept the
+        # symptom, root cause and fix of a seed but not its failed approach, so Act 2 could not warn about it.
+        metadata["failed_approaches"] = "; ".join(
+            f"{f.approach} (why it failed: {f.why_failed})" for f in case.failed_approaches
+        )[:MAX_FAILED_APPROACHES_CHARS]
+    return metadata
 
 
 def case_tags(case: MemoryCase) -> list[str]:
@@ -51,24 +64,34 @@ def case_tags(case: MemoryCase) -> list[str]:
     return tags
 
 
+MAX_FACTS_PER_CASE = 8  # bounds prompt size; a retained case produced 6 fact rows when measured live
+
+
 def dedupe_by_case(items: list[RecallResult]) -> list[RecallResult]:
-    """Collapse recall rows to one row per retained case, keeping the best row.
+    """Collapse recall rows to one row per retained case: the best row's scores, all its facts.
 
     Measured live on 2026-09-27: a bank holding 6 retained cases returned 35 recall rows,
     i.e. Hindsight emits several rows per stored memory (different chunk text, different
     scores, same `case_key`). Returning those rows as separate cases would duplicate
     provenance and inflate the candidate list, so the contract's one-row-per-memory intent
     is enforced here. Ties on `score_final` fall back to `score_semantic`, then first seen.
+
+    Measured live on 2026-09-28: the rows are not copies of one text. Hindsight extracts one
+    retained case into separate facts (the symptom, the failed approach, the resolution).
+    Keeping only the best row's text therefore dropped the failed approach and the fix before
+    they reached the pipeline, so the agent could not warn against a known-failed approach and
+    once recommended it. The distinct row texts are now joined, best row first; scores and
+    ordering still come from the best row only.
     """
-    best: dict[str, RecallResult] = {}
+    rows: dict[str, list[RecallResult]] = {}
     for item in items:
-        current = best.get(item.case_id)
-        if current is None or (item.score_final, item.score_semantic or 0.0) > (
-            current.score_final,
-            current.score_semantic or 0.0,
-        ):
-            best[item.case_id] = item
-    return list(best.values())
+        rows.setdefault(item.case_id, []).append(item)
+    collapsed = []
+    for case_rows in rows.values():
+        ordered = sorted(case_rows, key=lambda r: (r.score_final, r.score_semantic or 0.0), reverse=True)
+        facts = list(dict.fromkeys(t for t in (r.text.strip() for r in ordered) if t))[:MAX_FACTS_PER_CASE]
+        collapsed.append(replace(ordered[0], text=" | ".join(facts)))
+    return collapsed
 
 
 def render_content(case: MemoryCase) -> str:
@@ -241,6 +264,7 @@ class HindsightMemoryStore:
 
         raw_items = _attr(response, "results", []) or []
         items: list[RecallResult] = []
+        failed_before: dict[str, str] = {}
         for raw in raw_items:
             metadata = _attr(raw, "metadata", {}) or {}
             if not isinstance(metadata, dict):
@@ -255,17 +279,21 @@ class HindsightMemoryStore:
                     score_final=float(final_score) if final_score is not None else 0.0,
                     score_semantic=_score(raw, "semantic"),
                     score_keyword=_score(raw, "keyword"),
-                    environment={
-                        "service": str(metadata.get("service", "unknown")),
-                        "runtime": str(metadata.get("runtime", "unknown")),
-                    },
+                    environment={key: str(metadata.get(key, "unknown")) for key in ENV_METADATA_KEYS},
                     outcome=metadata.get("outcome"),
                     root_cause_key=metadata.get("root_cause_key"),
                     mentioned_at=_attr(raw, "mentioned_at"),
                 )
             )
+            if metadata.get("failed_approaches") and case_key:
+                failed_before[str(case_key)] = str(metadata["failed_approaches"])
+        collapsed = [
+            replace(item, text=f"{item.text} | Failed before: {failed_before[item.case_id]}")
+            if item.case_id in failed_before else item
+            for item in dedupe_by_case(items)
+        ]
         return RecallSet(
-            items=dedupe_by_case(items),
+            items=collapsed,
             recalled_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             bank_id=self._config.bank_id,
         )

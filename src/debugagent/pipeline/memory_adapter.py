@@ -23,6 +23,8 @@ from debugagent.schemas import MemoryCase
 
 __all__ = ["HindsightMemoryPort", "build_port", "close_port", "policy_from_config"]
 
+UNRECORDED = "unknown"  # hindsight_store.case_metadata's placeholder for a field the case did not record
+
 
 def policy_from_config(config: MemoryConfig) -> AbstentionPolicy:
     """Build the abstention policy from config.
@@ -77,6 +79,10 @@ class HindsightMemoryPort:
     @staticmethod
     def _with_case(candidate, by_id: dict) -> dict:
         payload = candidate.to_dict()
+        # case_metadata stores "unknown" for a field the past case never recorded. Passing it on made
+        # the MEMORY section say "runtime (then unknown, now node20)" and let verify() count a field the
+        # past case never had as an evidence gap. Unrecorded is not a value: drop it here.
+        payload["environment"] = {k: v for k, v in payload["environment"].items() if v != UNRECORDED}
         source = by_id.get(candidate.case_id)
         payload["text"] = source.text if source else ""
         payload["outcome"] = source.outcome if source else None
