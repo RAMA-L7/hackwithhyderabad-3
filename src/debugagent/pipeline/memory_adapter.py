@@ -29,15 +29,15 @@ UNRECORDED = "unknown"  # hindsight_store.case_metadata's placeholder for a fiel
 def policy_from_config(config: MemoryConfig) -> AbstentionPolicy:
     """Build the abstention policy from config.
 
-    Only the three thresholds MemoryConfig carries are taken from the environment
-    (min_final_score, weak_reference_floor, stale_after_days). semantic_floor and
-    contradiction_margin stay on the AbstentionPolicy defaults because MemoryConfig does not
-    expose them yet (contract limitation L5). They are provisional values, not calibrated ones.
+    Thresholds taken from the environment: min_final_score, weak_reference_floor, stale_after_days and
+    semantic_floor (DEBUGAGENT_SEMANTIC_FLOOR; closes contract limitation L5 for it). contradiction_margin
+    still stays on the AbstentionPolicy default. All are provisional values, not calibrated ones.
     """
     return AbstentionPolicy(
         min_final_score=config.min_final_score,
         weak_reference_floor=config.weak_reference_floor,
         stale_after_days=config.stale_after_days,
+        semantic_floor=config.semantic_floor,
     )
 
 

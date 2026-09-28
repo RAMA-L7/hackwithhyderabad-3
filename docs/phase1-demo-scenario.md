@@ -90,7 +90,9 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 *Rehearsed 2026-09-28: abstained=False, class=relevant, top 1.0872, 3 candidates.*
 
 7. Engineer starts a second issue: *"media-uploader resets connections on uploads over 2 MB behind
-   nginx"* (`service=media-uploader`, `runtime=node20`, `proxy=nginx-1.25`).
+   nginx"* (`service=media-uploader`, `runtime=node20`, `proxy=nginx-1.25`). At the facts prompt, add
+   `region=us-east-1`: seeds now carry `region`, so leaving it unstated makes it an evidence gap and the
+   memory-backed hypothesis becomes `insufficient_evidence` (correct behaviour, but not this beat).
 8. **MEMORY** shows the seeded `media-uploader` case as `relevant` with *"differs from now: nothing
    recorded differs"*, and the `orders-api` proxy case as a foreign-service reference with the
    mismatch stated explicitly: *"differs from now: runtime (then python3.10, now node20), service
@@ -162,6 +164,17 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 A single act is **~12–30 s**, dominated by one structured LLM call (3–7 s, up to ~14 s through
 failover). All four trust sections rendered on every act on a Windows console.
 
+**Final rehearsals on `mukul/phase1-fixes` @ `5373b3e`** (Mukul, macOS, Baseten primary, `semantic_floor` 0.75,
+two separate fresh banks, Acts 1 → 2 → 3 → 4, each checked against this script):
+
+| Bank | Seed | Act 1 | Act 2 | Act 3 | Act 4 (Act 1 recurs) |
+|---|---|---|---|---|---|
+| `demo-rehearsal-1790617985` | 6 / 0 / 0 | abstained, 3 generic, retained | seed relevant; full env + *Failed before*; H1 cites it and leads with the fix; retained | only the two orders-api cases, contradictory; nothing retained | Act 1's live case recalled and cited |
+| `demo-rehearsal-1790618070` | 6 / 0 / 0 | same | same | same | same, served by the **fallback** (`fallback_used=True`) |
+
+The earlier rehearsal on `a36bad3` (floor 0.70) failed Act 1 and Act 3 on semantic-fallback false positives;
+see `docs/decision-log.md`.
+
 **Provider behaviour:** Act 1 was served by the **fallback** (`baseten`) after two primary attempts
 returned `INVALID_OUTPUT` — the CLI showed `fallback_used=True` and the log lines, which is the
 designed resilience story. Acts 2 and 3 were served by the **primary** (`openrouter`), showing
@@ -186,6 +199,9 @@ designed resilience story. Acts 2 and 3 were served by the **primary** (`openrou
   parameters** — provisional defaults from a six-case bank, not measured truths. Say "relevance is
   classified app-side and the thresholds are configurable", never "the threshold is 0.05". The
   rehearsal above is exactly why: a 0.022 margin decided Act 1 on one bank and not another.
+- `semantic_floor` is **0.75** on `mukul/phase1-fixes` (was 0.70; `DEBUGAGENT_SEMANTIC_FLOOR` overrides it).
+  The final fresh-bank rehearsal on 2026-09-28 admitted `batch-runner` into Act 1 (semantic 0.7084) and
+  `media-uploader` into Act 3 (0.7016) at 0.70. Evidence and reasoning: `docs/decision-log.md`.
 - No proprietary data, no secrets on screen.
 - If the primary LLM fails during the recording, let the fallback serve it and keep the log line
   showing `fallback_used=True`.
