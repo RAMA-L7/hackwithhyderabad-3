@@ -201,6 +201,12 @@ which adds rows there. Evidence: `docs/phase1-mukul-m0-plan.md` §6 and `docs/ph
 | 2026-09-28 | Normalizer is deterministic; reads only `service`, `runtime`, `proxy`, `region` from free text, as whole tokens; unstated keys stay `null` | Contract 2.2 (no LLM, never invent). Whole-token matching stops `web-service=foo` being read as `service` | Mukul | Implemented (MK3) |
 | 2026-09-28 | A hint that disagrees with the description, or a key stated twice with different values, **fails closed** with `NormalizationError` | Never silently pick or overwrite an engineer-supplied value; the demo inputs never conflict | Mukul | Implemented (MK3) |
 | 2026-09-28 | Contract extensions used by MK1: `Resolution.outcome` (Q1), `Hypothesis.ref` = `H1`, `H2`… (Q5), `EvidenceItem.name` (Q4) | `MemoryCase.outcome` is required but had no source; verification needs a hypothesis id and named evidence facts | Mukul | Implemented, pending Rama (plan §5) |
+| 2026-09-28 | The proposal has 2–3 hypotheses, most likely first | A ranked comparison is what the demo shows; one hypothesis cannot show reprioritisation | Mukul | Implemented (MK5) |
+| 2026-09-28 | `relevance_state` is set by code from the cited cases' classes, most cautious wins: any contradictory → conditional, else any relevant → supported, else partial → weak-reference, none → generic. When memory abstains, nothing is citable | Plan Q3/Q7: the model never labels its own trust level | Mukul | Implemented (MK5), pending Rama (Q3) |
+| 2026-09-28 | The prompt labels CURRENT ISSUE and PAST CASES apart and forbids describing the current system with a past case's service or version | MK4 live test showed the model calling the current `photo-api` issue `media-uploader`; after the change the live run described the current system correctly | Mukul | Implemented (MK5) |
+| 2026-09-28 | `verify()` status is `insufficient_evidence` when current evidence has no known items or lacks an environment field recorded in a cited case; otherwise the engineer's reading of the evidence. Never computed from memory | Plan Q4; a perfect memory match with missing evidence stays unverified | Mukul | Implemented (MK6), pending Rama (Q4) |
+| 2026-09-28 | Engineer facts that contradict an already known value fail closed; evidence references must be `scheme://` references, not pasted text | Same rule as the normalizer; C5 (URIs only) | Mukul | Implemented (MK6) |
+| 2026-09-28 | Before MK9 the CLI uses an offline memory file (`demo/offline-memory.json`) that labels every retention "not Hindsight; not validated by the memory layer" | Lets the full loop be rehearsed without Rama's code or Cloud credentials; replaced at MK9 | Mukul | Implemented (MK8) |
 
 ---
 
@@ -212,10 +218,10 @@ which adds rows there. Evidence: `docs/phase1-mukul-m0-plan.md` §6 and `docs/ph
 | Seed data prepared | 2026-09-29 | Rama | 6 synthetic seeds on `rama-m0`; final bank + demo/seed fix pending |
 | Memory schema finalized | 2026-09-28 | Rama | Implemented on `rama-m0` (78 tests); Mukul-side types in MK1 |
 | Recall engine implemented | 2026-09-28 | Rama | Implemented on `rama-m0`; threshold calibration pending |
-| Verification gate implemented | 2026-09-29 | Mukul | MK6 not started (waits on Q4) |
-| Agent reasoning loop working | 2026-09-29 | Mukul | MK3 normalizer + MK4 LLM router done; MK2, MK5, MK7 pending |
+| Verification gate implemented | 2026-09-28 | Mukul | Done (MK6), built on proposal Q4 |
+| Agent reasoning loop working | 2026-09-28 | Mukul | Done (MK2–MK7); live run through Baseten with offline memory |
 | Tool adapters integrated | — | — | Out of Phase 1 scope (no live EDA/log integrations) |
-| UI (CLI/Slack/Web) functional | 2026-09-29 | Mukul | CLI (MK8) not started |
+| UI (CLI/Slack/Web) functional | 2026-09-28 | Mukul | CLI done (MK8): debug + inspect |
 | End-to-end demo working | 2026-09-29 | Both | After MK9 merge |
 | Demo video recorded | 2026-09-29 | Both | Not started |
 | Technical articles drafted | | | |

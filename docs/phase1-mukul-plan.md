@@ -1,6 +1,6 @@
 # Phase 1 — Mukul-Side Milestones
 
-**Status:** In progress (MK0, MK1 done). §5 answers still to be confirmed with Rama; MK1 used the proposals.
+**Status:** MK0–MK8 done; MK9 (joint merge) remains. §5 answers still to be confirmed with Rama; the code uses the proposals.
 **Date:** 2026-09-28 · **Deadline:** MVP demo-ready 29 Sept afternoon.
 **Branch:** `mukul-loop`, cut from `main` @ `1800c62`. **Independent of `rama-m0`:** nothing on
 this branch imports, copies, or edits Rama's code. The two sides meet only through the memory
@@ -39,8 +39,9 @@ Rama              MemoryPort.retain(case)   (called only after engineer_decision
 ```
 src/debugagent/llm/__init__.py, router.py
 src/debugagent/pipeline/__init__.py, types.py, memory_port.py, normalize.py,
-                        recall_match.py, hypothesize.py, evidence.py, verify.py, investigate.py
+                        recall_match.py, hypothesize.py, evidence.py, verify.py, investigate.py, render.py
 src/debugagent/cli.py
+demo/offline-memory.json  (pre-MK9 stand-in memory for rehearsal)
 tests/loop_support.py, tests/test_loop_*.py
 mk0/probe.py, mk0/results/
 docs/phase1-mukul-plan.md, docs/phase1-mukul-m0-plan.md
@@ -120,7 +121,9 @@ MK1 ✅ (`pipeline/types.py`, `pipeline/memory_port.py`, `tests/loop_support.py`
 built on the §5 proposals Q1/Q3/Q5 plus `EvidenceItem.name` (Q4) — each is one field to change if
 Rama disagrees. · MK4 ✅ (`llm/router.py`; 28 fake-transport tests; live smoke:
 Baseten served in 2.8 s, forced failover served by OpenRouter in 4.1 s with `fallback_used=true`) ·
-MK3 ✅ (`pipeline/normalize.py`; 12 tests; hint/text conflict fails closed, decided 2026-09-28).
+MK3 ✅ (`pipeline/normalize.py`; 12 tests; hint/text conflict fails closed, decided 2026-09-28). · MK2 ✅ MK5 ✅ MK6 ✅ MK7 ✅ MK8 ✅
+(`recall_match.py`, `hypothesize.py`, `evidence.py`, `verify.py`, `investigate.py`, `render.py`, `cli.py`;
+104 tests; live CLI run through Baseten with the offline memory file). **Only MK9 remains.**
 
 MK1–MK8 run fully **offline** against `FakeMemoryPort` (canned views + retain spy) and a fake
 LLM transport, both in `tests/loop_support.py`. No keys, no Hindsight, no Rama code.
@@ -253,3 +256,29 @@ web UI · second domain · auto-retention · new dependencies.
   naming the key. Keys are matched as whole tokens, so `web-service=foo` is not `service`.
 - Tests: nothing invented (unstated keys stay `None`); values verbatim; hints never overwritten;
   non-taxonomy `a=b` in text ignored; conflict raises; blank raises; same input → same output.
+
+## 9. How to run (before MK9)
+
+```
+PYTHONPATH=src python3 -m unittest discover -s tests             # 104 offline tests
+PYTHONPATH=src python3 -m debugagent.cli debug                   # live LLM + offline memory file
+PYTHONPATH=src python3 -m debugagent.cli inspect                 # trace of the last session
+```
+
+`debug` reads `.env.live`, recalls from `demo/offline-memory.json` (queries containing "upload" get
+the relevant view; anything else gets the abstained view), and writes retained cases to
+`.debugagent/offline-retained.jsonl` (git-ignored). MK9 swaps `--memory` to the Hindsight adapter.
+
+## 10. MK9 checklist (joint)
+
+1. Rama confirms §5 (or the proposals stand), pins `hindsight-client==0.10.1`, shares Cloud URL/key.
+2. `git merge origin/rama-m0` into `mukul-loop` (verified clean; 139 tests pass together).
+3. Add `pipeline/memory_adapter.py`: `recall_and_classify` = `store.recall()` → `classify_candidates()` →
+   `to_dict()` + join `text`/`outcome` by `case_id` (Q8); `retain` = `MemoryCase.from_dict()` → `store.retain()`
+   → `to_dict()`; map `MemoryUnavailable`/`MemoryAuthError`/`MemorySchemaError` → `MemoryFailure` kinds.
+   Test it with the seam check already proven in the trial merge.
+4. `cli.make_port`: `--memory hindsight` builds the adapter; make it the default.
+5. `pyproject.toml`: console entry point `debugagent = "debugagent.cli:main"`; `.env.example`: provider swap +
+   `LLM_{PRIMARY,FALLBACK}_TIMEOUT_S`.
+6. Change-log entries for MK0–MK9.
+7. Live: Act 1 → retain → Act 2 recalls it; re-run `mk0/probe.py --only D1,D2,S2,X3`.
