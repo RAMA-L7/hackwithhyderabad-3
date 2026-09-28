@@ -44,10 +44,11 @@ def normalize(raw: DebugInput) -> NormalizedDebugCase:
 
     errors: list[str] = []
     environment: dict[str, str | None] = {key: None for key in TAXONOMY_KEYS}
-    for key, value in _ENV_PAIR.findall(raw.description):
+    engineer_text = "\n".join([raw.description, *raw.measurements])  # both are the engineer's own input
+    for key, value in _ENV_PAIR.findall(engineer_text):
         key, value = key.lower(), _clean(value)
         if environment[key] is not None and environment[key] != value:
-            errors.append(f"environment.{key}: the description states both '{environment[key]}' and '{value}'")
+            errors.append(f"environment.{key}: the input states both '{environment[key]}' and '{value}'")
         environment[key] = environment[key] or value
 
     for key, value in raw.environment_hints.items():

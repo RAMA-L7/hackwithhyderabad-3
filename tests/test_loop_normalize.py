@@ -48,6 +48,15 @@ class NormalizeTests(unittest.TestCase):
         case = normalize(DebugInput("x\nService: Photo-API, Region=eu-west-1."))
         self.assertEqual((case.environment["service"], case.environment["region"]), ("Photo-API", "eu-west-1"))
 
+    def test_env_pairs_in_measurements_are_read(self):  # manual run 2026-09-28: they were silently dropped
+        case = normalize(DebugInput("invoice-api times out on long PDFs", ["service=invoice-api runtime=python3.11"]))
+        self.assertEqual((case.environment["service"], case.environment["runtime"]), ("invoice-api", "python3.11"))
+        self.assertEqual(case.symptoms, [])
+
+    def test_measurement_conflicting_with_description_fails_closed(self):
+        with self.assertRaises(NormalizationError):
+            normalize(DebugInput("x service=a", ["service=b"]))
+
     def test_extra_hint_keys_kept(self):
         self.assertEqual(normalize(DebugInput("x", environment_hints={"tls": "1.3"})).environment["tls"], "1.3")
 

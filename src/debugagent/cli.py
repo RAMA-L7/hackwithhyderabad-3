@@ -103,15 +103,23 @@ class TerminalEngineer:
         self.say()
         self.say(text)
 
-    def current_facts(self, evidence: Evidence) -> dict[str, str | None]:
+    def current_facts(self, evidence: Evidence) -> list[tuple[str, str | None]]:
         hint = f" Unknown now: {', '.join(evidence.unknown_fields)}." if evidence.unknown_fields else ""
-        facts: dict[str, str | None] = {}
-        for line in self.lines(f"Add current facts as name=value.{hint} (blank line to continue)"):
-            name, sep, value = line.partition("=")
-            if not sep or not name.strip():
+        known = evidence.known()
+        facts: list[tuple[str, str | None]] = []
+        prompt = f"Add current facts as name=value, or a plain sentence for an observation.{hint} (blank line to continue)"
+        for line in self.lines(prompt):
+            name, sep, value = (part.strip() for part in line.partition("="))
+            key = name.lower()
+            if not sep:
+                facts.append(("observation", line))  # a sentence is an observation, never silently dropped
+            elif not name:
                 self.say(f"  skipped '{line}': use name=value")
-                continue
-            facts[name.strip()] = value.strip() or None
+            elif key != "observation" and key in known and value and value != known[key]:
+                # a typo must not end the session; add_facts still fails closed if a conflict slips through
+                self.say(f"  skipped '{line}': {key} is already '{known[key]}' from your description")
+            else:
+                facts.append((name, value or None))
         return facts
 
     def decide(self, hypothesis: Hypothesis, mismatched: list[str], missing: list[str]) -> EngineerDecision:
