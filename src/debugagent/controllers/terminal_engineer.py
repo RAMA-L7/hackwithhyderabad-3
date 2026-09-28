@@ -64,13 +64,18 @@ class TerminalEngineer:
 
     def current_facts(self, evidence: Evidence) -> dict[str, str | None]:
         hint = f" Unknown now: {', '.join(evidence.unknown_fields)}." if evidence.unknown_fields else ""
+        known = evidence.known()
         facts: dict[str, str | None] = {}
         for line in self.lines(f"Add current facts as name=value.{hint} (blank line to continue)"):
-            name, sep, value = line.partition("=")
-            if sep and name.strip():
-                facts[name.strip()] = value.strip() or None
-            else:
+            name, sep, value = (part.strip() for part in line.partition("="))
+            key = name.lower()
+            if not sep or not name:
                 self.say(f"  skipped '{line}': use name=value")
+            elif key != "observation" and key in known and value and value != known[key]:
+                # re-ask instead of aborting; EvidenceService still fails closed if a conflict slips through
+                self.say(f"  skipped '{line}': {key} is already '{known[key]}' from your description")
+            else:
+                facts[name] = value or None
         return facts
 
     def decide(self, hypothesis: Hypothesis, mismatched: list[str], missing: list[str]) -> EngineerDecision:
