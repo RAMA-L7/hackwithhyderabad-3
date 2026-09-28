@@ -77,6 +77,7 @@
 | Q17 | Which domain (engineering vs VC) produces stronger portfolio pieces for each member? | Both | At decision |
 | Q18 | Do Ideas 4/5 have stronger "visible learning curve" demos than Ideas 1-3? | Both | At decision |
 | Q19 | How to handle confidentiality concerns if judges ask about real data? | Both | Before demo |
+| Q20 | Rama to confirm Mukul-side proposals Q0 (branch + MemoryPort), Q1, Q4, Q5, Q8 and acknowledge the provider swap — see `docs/phase1-mukul-plan.md` §5 | Rama | Before MK5 (2026-09-28) |
 
 ---
 
@@ -182,21 +183,42 @@ by both members before implementation starts.
 
 ---
 
+## Implementation Decisions — Mukul side (`mukul-loop`)
+
+Kept in its own section (not appended to the table above) so it merges cleanly with `rama-m0`,
+which adds rows there. Evidence: `docs/phase1-mukul-m0-plan.md` §6 and `docs/phase1-mukul-plan.md`.
+
+| Date | Decision | Rationale | Author(s) | Status |
+|------|----------|-----------|-----------|--------|
+| 2026-09-28 | Mukul's work lives on `mukul-loop`, cut from `main`, with no code from `rama-m0`; the two sides meet only through the `MemoryPort` interface (plain dicts shaped like Rama's `to_dict()` at `7254fc3`) and are joined once at MK9 by a thin adapter | Parallel work without merge conflicts; the pipeline never depends on Hindsight internals. Verified: trial merge with `origin/rama-m0` is clean | Mukul | Pending Rama (plan §5 Q0) |
+| 2026-09-28 | **Provider order swapped:** primary Baseten DeepSeek V4.1 Flash, fallback OpenRouter Space Bunny Alpha. Supersedes the order in the 2026-09-27 LLM decision; the adapter/router rules are unchanged | MK0 final run `20260928T061541Z`: Baseten p50 3.2 s vs Space Bunny ~9.8 s, both 5/5 valid; removes the stealth-preview model from the main path. Cost: Baseten is paid, OpenRouter free | Mukul | Decided; Rama to acknowledge. `.env.example` swapped jointly at MK9 |
+| 2026-09-28 | Reasoning control is mandatory per provider: Baseten `chat_template_kwargs: {thinking: false}`, OpenRouter `reasoning: {effort: low}`; `max_tokens` 1500 | MK0 run `20260928T060033Z`: without it both models reasoned until `max_tokens` and returned no JSON (fallback 0/5 valid). Baseten ignores `reasoning_effort` (S8) | Mukul | Implemented (MK4) |
+| 2026-09-28 | `require_parameters` (strict routing) is never sent; strict `response_format` goes to every route and local validation stays the only guarantee | Space Bunny returns 404 with it (MK0 S1), consistent with Rama's M0 row of 2026-09-27 | Mukul | Implemented (MK4) |
+| 2026-09-28 | Timeouts: primary 10 s, fallback 17 s (`LLM_{ROLE}_TIMEOUT_S`, 1.5× max observed) | MK0 S6: primary max 6.1 s, fallback max 10.8 s; typical interaction ≈ 3 s, observed worst failover ≈ 17 s | Mukul | Implemented (MK4) |
+| 2026-09-28 | Failure handling: timeout / unreachable / 429 / 5xx / 200-with-error fail over; 401/403 → auth error and 400/402/404/other 4xx → config error, never failing over; invalid output (truncated, empty, non-JSON, schema or caller check failure) → retry once → fail over → `StructuredOutputError` | Matches the Phase 0 rules; MK0 X1 showed the providers differ (Baseten 404/403, OpenRouter 400/401), so classification is by status class, not per provider | Mukul | Implemented (MK4) |
+| 2026-09-28 | Prompts use real case ids; no aliasing | MK0 S3: 0 invented or mangled ids across 34 + 22 citations, both 16-hex and `seed-00N` forms | Mukul | Decided |
+| 2026-09-28 | No plain-text `complete()` in Phase 1 | Its only planned consumer (hypothesis generation) is structured | Mukul | Decided |
+| 2026-09-28 | Normalizer is deterministic; reads only `service`, `runtime`, `proxy`, `region` from free text, as whole tokens; unstated keys stay `null` | Contract 2.2 (no LLM, never invent). Whole-token matching stops `web-service=foo` being read as `service` | Mukul | Implemented (MK3) |
+| 2026-09-28 | A hint that disagrees with the description, or a key stated twice with different values, **fails closed** with `NormalizationError` | Never silently pick or overwrite an engineer-supplied value; the demo inputs never conflict | Mukul | Implemented (MK3) |
+| 2026-09-28 | Contract extensions used by MK1: `Resolution.outcome` (Q1), `Hypothesis.ref` = `H1`, `H2`… (Q5), `EvidenceItem.name` (Q4) | `MemoryCase.outcome` is required but had no source; verification needs a hypothesis id and named evidence facts | Mukul | Implemented, pending Rama (plan §5) |
+
+---
+
 ## Post-Decision Tracking
 
 | Milestone | Target Date | Owner | Status |
 |-----------|-------------|-------|--------|
-| Hindsight API verified | | | |
-| Seed data prepared | | | |
-| Memory schema finalized | | | |
-| Recall engine implemented | | | |
-| Verification gate implemented | | | |
-| Agent reasoning loop working | | | |
-| Tool adapters integrated | | | |
-| UI (CLI/Slack/Web) functional | | | |
-| End-to-end demo working | | | |
-| Demo video recorded | | | |
+| Hindsight API verified | 2026-09-27 | Rama | Done on `rama-m0` (M0 run `20260927T183607Z`) |
+| Seed data prepared | 2026-09-29 | Rama | 6 synthetic seeds on `rama-m0`; final bank + demo/seed fix pending |
+| Memory schema finalized | 2026-09-28 | Rama | Implemented on `rama-m0` (78 tests); Mukul-side types in MK1 |
+| Recall engine implemented | 2026-09-28 | Rama | Implemented on `rama-m0`; threshold calibration pending |
+| Verification gate implemented | 2026-09-29 | Mukul | MK6 not started (waits on Q4) |
+| Agent reasoning loop working | 2026-09-29 | Mukul | MK3 normalizer + MK4 LLM router done; MK2, MK5, MK7 pending |
+| Tool adapters integrated | — | — | Out of Phase 1 scope (no live EDA/log integrations) |
+| UI (CLI/Slack/Web) functional | 2026-09-29 | Mukul | CLI (MK8) not started |
+| End-to-end demo working | 2026-09-29 | Both | After MK9 merge |
+| Demo video recorded | 2026-09-29 | Both | Not started |
 | Technical articles drafted | | | |
 | Social posts drafted | | | |
 | GitHub repo polished | | | |
-| Submission complete | | | |
+| Submission complete | 2026-09-29 | Both | Not started |
