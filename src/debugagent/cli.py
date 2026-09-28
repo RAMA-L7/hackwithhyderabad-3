@@ -198,11 +198,14 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         state.mkdir(parents=True, exist_ok=True)
         last.write_text(json.dumps(session.to_dict(), indent=2, default=str))
 
+    owns_port = False
     try:
         if llm is None:
             load_env_file(args.env)
             llm = LLMRouter.from_env()
-        port = port or make_port(args.memory, state)
+        if port is None:
+            port = make_port(args.memory, state)
+            owns_port = True
         raw = engineer.read_input()
         session = investigate(raw, port, llm, engineer, on_step=save)
     except KeyboardInterrupt:
@@ -212,6 +215,14 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
             MemoryFailure, LLMError) as exc:
         print(f"error: {exc}", file=err)
         return 1
+    finally:
+        # Release the backend's HTTP session on every exit path. The Hindsight client opens an
+        # aiohttp session on first use; without this it is only reclaimed at interpreter exit, which
+        # prints "Unclosed client session" / "Unclosed connector". Only a port this function created
+        # is closed - an injected port belongs to the caller.
+        if owns_port and port is not None:
+            from debugagent.pipeline.memory_adapter import close_port
+            close_port(port)
     engineer.say(f"session {session.session_id} saved to {last}; run 'inspect' for the trace")
     return 0
 

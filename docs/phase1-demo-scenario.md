@@ -20,9 +20,14 @@ export HINDSIGHT_BANK_ID=debugagent-demo-$(date +%s)   # a NEW name per recordin
 PYTHONPATH=src python -c "from debugagent.config import load_memory_config; \
 from debugagent.memory.hindsight_store import HindsightMemoryStore; \
 from debugagent.seeds.loader import load_seed_cases; \
-print(load_seed_cases(HindsightMemoryStore(load_memory_config())).to_dict())"
+store = HindsightMemoryStore(load_memory_config()); \
+print(load_seed_cases(store).to_dict()); store.close()"
 PYTHONPATH=src python -m debugagent.cli debug --env .env     # Act 1, then Act 2, then Act 3
 ```
+
+The `store.close()` matters: the Hindsight client holds an aiohttp session, and without an explicit
+close the process prints *"Unclosed client session"* and *"Unclosed connector"* on exit. The CLI
+closes its own port automatically; this one-liner has to do it by hand.
 
 Seeding the six cases took **24–38 s**. Running it twice inserts 0 and skips 6, so it is safe to repeat.
 

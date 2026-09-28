@@ -158,12 +158,29 @@ class HindsightMemoryStore:
         self._config = config
         self._client = client if client is not None else self._build_client(config)
         self._ledger = ledger if ledger is not None else Ledger(config.ledger_path)
+        self._closed = False
         self._ensure_bank()
 
     @property
     def config(self) -> MemoryConfig:
         """The configuration this store was built with (read-only)."""
         return self._config
+
+    def close(self) -> None:
+        """Release the backend's HTTP resources. Idempotent; safe to call on an injected client.
+
+        `hindsight_client.Hindsight` opens an aiohttp ClientSession (and its TCPConnector) on the
+        first request. The client exposes a supported synchronous `close()`, so this is an explicit
+        lifecycle call rather than leaving the session to be reclaimed at interpreter exit, which is
+        what produced the "Unclosed client session" / "Unclosed connector" ResourceWarnings. The
+        async `aclose()` exists too but this codebase is fully synchronous.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        closer = getattr(self._client, "close", None)
+        if callable(closer):
+            closer()
 
     @staticmethod
     def _build_client(config: MemoryConfig) -> Any:

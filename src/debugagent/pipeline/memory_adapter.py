@@ -21,7 +21,7 @@ from debugagent.memory.store import MemoryAuthError, MemorySchemaError, MemoryUn
 from debugagent.pipeline.memory_port import MemoryFailure, check_retention, check_view
 from debugagent.schemas import MemoryCase
 
-__all__ = ["HindsightMemoryPort", "build_port", "policy_from_config"]
+__all__ = ["HindsightMemoryPort", "build_port", "close_port", "policy_from_config"]
 
 
 def policy_from_config(config: MemoryConfig) -> AbstentionPolicy:
@@ -98,6 +98,21 @@ class HindsightMemoryPort:
             # accept a malformed case just because the failure surfaced as a plain ValueError.
             raise MemoryFailure("schema", f"rejected invalid case: {exc}") from exc
         return check_retention(decision.to_dict())
+
+    def close(self) -> None:
+        """Release the backend HTTP resources owned by this port. Idempotent."""
+        self._store.close()
+
+
+def close_port(port: object) -> None:
+    """Close a port's backend resources, if it owns any.
+
+    A port that holds no HTTP client (the offline rehearsal port, a test fake) simply has no close()
+    and owns nothing to release, so there is nothing to do.
+    """
+    closer = getattr(port, "close", None)
+    if callable(closer):
+        closer()
 
 
 def build_port(*, data_dir: str | None = None) -> HindsightMemoryPort:

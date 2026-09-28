@@ -91,11 +91,14 @@ The pipeline is integrated on `integration/phase1`. It is stdlib-only apart from
 # 1. credentials: HINDSIGHT_URL / HINDSIGHT_API_KEY / HINDSIGHT_BANK_ID, and the LLM_* pair
 cp .env.example .env          # then fill it in; .env is git-ignored
 
-# 2. seed the bank once (idempotent - a second run inserts nothing)
+# 2. seed the bank once (idempotent - a second run inserts nothing).
+#    close() releases the backend HTTP session; without it Python prints
+#    "Unclosed client session" / "Unclosed connector" when the process exits.
 PYTHONPATH=src python -c "from debugagent.config import load_memory_config; \
 from debugagent.memory.hindsight_store import HindsightMemoryStore; \
 from debugagent.seeds.loader import load_seed_cases; \
-print(load_seed_cases(HindsightMemoryStore(load_memory_config())).to_dict())"
+store = HindsightMemoryStore(load_memory_config()); \
+print(load_seed_cases(store).to_dict()); store.close()"
 
 # 3. investigate one issue; renders MEMORY / EVIDENCE / PROPOSAL / DECISION
 PYTHONPATH=src python -m debugagent.cli debug --env .env

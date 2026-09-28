@@ -26,7 +26,7 @@ import support  # noqa: F401  (path wiring)
 from debugagent.memory.hindsight_store import HindsightMemoryStore
 from debugagent.memory.matching import AbstentionPolicy
 from debugagent.pipeline.investigate import assemble_memory_case, investigate
-from debugagent.pipeline.memory_adapter import HindsightMemoryPort, policy_from_config
+from debugagent.pipeline.memory_adapter import HindsightMemoryPort, close_port, policy_from_config
 from debugagent.pipeline.memory_port import MemoryFailure
 from debugagent.pipeline.types import DebugInput
 from debugagent.pipeline.verify import EngineerDecision
@@ -404,6 +404,141 @@ class FullLoopTests(unittest.TestCase):
                 decisions=accept_h1(),
                 resolution=None,
             )
+
+
+class ResourceCleanupTests(unittest.TestCase):
+    """The Hindsight client opens an aiohttp session on first use. It must be released explicitly at
+    the application lifecycle boundary, not left to the garbage collector at interpreter exit."""
+
+    def test_store_close_releases_the_backend_client(self):
+        client = orders_bank()
+        store = HindsightMemoryStore(memory_config(Path(tempfile.mkdtemp())), client=client)
+        self.assertFalse(client.closed)
+        store.close()
+        self.assertTrue(client.closed, "close() must reach the backend client")
+
+    def test_store_close_is_idempotent(self):
+        client = orders_bank()
+        store = HindsightMemoryStore(memory_config(Path(tempfile.mkdtemp())), client=client)
+        store.close()
+        store.close()  # must not raise, and must not double-close the transport
+        self.assertTrue(client.closed)
+
+    def test_store_close_tolerates_a_client_without_close(self):
+        class Bare:
+            def get_bank_config(self, bank_id):
+                return {"bank_id": bank_id}
+
+        store = HindsightMemoryStore(memory_config(Path(tempfile.mkdtemp())), client=Bare())
+        store.close()  # no close() on the client: nothing to release, must not raise
+
+    def test_port_close_delegates_to_the_store(self):
+        client = orders_bank()
+        port = port_with(client)
+        port.close()
+        self.assertTrue(client.closed)
+
+    def test_close_port_is_a_no_op_for_a_port_that_owns_no_client(self):
+        class Ownerless:
+            pass
+
+        close_port(Ownerless())  # no close(): must not raise
+
+    @staticmethod
+    def _abort(prompt=""):
+        """End the session at the first prompt. TerminalEngineer turns EOFError into AbortSession,
+        so this exercises the early-exit path without driving a whole interactive session."""
+        raise EOFError
+
+    def test_cli_leaves_an_injected_port_to_its_caller(self):
+        """main() closes only a port it created; an injected port belongs to whoever passed it in."""
+        import io as _io
+
+        from debugagent import cli
+
+        closed: list[str] = []
+
+        class Port:
+            def recall_and_classify(self, query):  # pragma: no cover - never reached
+                raise AssertionError("retain/recall must not be reached")
+
+            def retain(self, case):  # pragma: no cover - never reached
+                raise AssertionError("retain must not be reached")
+
+            def close(self):
+                closed.append("closed")
+
+        code = cli.main(["debug", "--memory", "hindsight", "--env", ".env"], ask=self._abort,
+                        out=_io.StringIO(), err=_io.StringIO(),
+                        llm=FakeLLM({"hypotheses": [hyp(), hyp()]}), port=Port(),
+                        state_dir=tempfile.mkdtemp())
+        self.assertEqual(code, 1)
+        self.assertEqual(closed, [], "an injected port belongs to the caller and must not be closed")
+
+    def test_cli_closes_the_port_it_built_on_the_abort_path(self):
+        """A session that ends early must still release the backend HTTP session."""
+        import io as _io
+
+        from debugagent import cli
+
+        closed: list[str] = []
+
+        class Port:
+            def recall_and_classify(self, query):  # pragma: no cover - never reached
+                raise AssertionError("recall must not be reached")
+
+            def retain(self, case):  # pragma: no cover - never reached
+                raise AssertionError("retain must not be reached")
+
+            def close(self):
+                closed.append("closed")
+
+        original = cli.make_port
+        cli.make_port = lambda spec, state: Port()
+        try:
+            code = cli.main(["debug", "--memory", "hindsight", "--env", ".env"], ask=self._abort,
+                            out=_io.StringIO(), err=_io.StringIO(),
+                            llm=FakeLLM({"hypotheses": [hyp(), hyp()]}),
+                            state_dir=tempfile.mkdtemp())
+        finally:
+            cli.make_port = original
+        self.assertEqual(code, 1, "an aborted session exits non-zero")
+        self.assertEqual(closed, ["closed"], "the port must be released even when the session ends early")
+
+    def test_cli_closes_the_port_it_built_when_recall_fails(self):
+        """A memory failure is an error, not 'no memory found' - and still releases the session."""
+        import io as _io
+
+        from debugagent import cli
+        from debugagent.pipeline.memory_port import MemoryFailure
+
+        closed: list[str] = []
+
+        class Port:
+            def recall_and_classify(self, query):
+                raise MemoryFailure("unavailable", "bank unreachable")
+
+            def retain(self, case):  # pragma: no cover - never reached
+                raise AssertionError("retain must not be reached")
+
+            def close(self):
+                closed.append("closed")
+
+        original = cli.make_port
+        cli.make_port = lambda spec, state: Port()
+        # description lines, blank, then measurements lines, blank. recall() is the next step and it
+        # fails, so the script never has to satisfy a later prompt.
+        script = ["media-uploader resets connections on uploads over 2MB", "service=media-uploader", "", ""]
+        try:
+            code = cli.main(["debug", "--memory", "hindsight", "--env", ".env"],
+                            ask=lambda prompt="": script.pop(0) if script else "",
+                            out=_io.StringIO(), err=_io.StringIO(),
+                            llm=FakeLLM({"hypotheses": [hyp(), hyp()]}),
+                            state_dir=tempfile.mkdtemp())
+        finally:
+            cli.make_port = original
+        self.assertEqual(code, 1, "an unreachable bank is an error, not 'no memory found'")
+        self.assertEqual(closed, ["closed"], "the port must be released even when the session fails")
 
 
 if __name__ == "__main__":
