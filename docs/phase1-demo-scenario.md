@@ -126,8 +126,9 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
     so **nothing is retained**; the CLI does ask.
 
 > **This query was also changed.** "orders-api returns 502 for payloads above 2 MB" surfaced a third,
-> unrelated `checkout-api` case as `relevant`, which outranked the pair and suppressed the
-> abstention. The wording above keeps the conflict at the top and abstains deterministically.
+> unrelated `checkout-api` case as `relevant`, which outranked the pair. The wording above keeps the
+> conflict at the top, so the stable behaviour is that **conflicting history is surfaced side by side;
+> abstention depends on the score margin** and is not guaranteed.
 
 ## What the judge should see in 60–90 seconds
 
@@ -143,12 +144,19 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 
 ## Rehearsal record (2026-09-28, live Hindsight Cloud + real LLM)
 
+> **These numbers are PRE-FIX.** They were measured at `integration/phase1` @ `1f29c30`, **before** the
+> `mukul/phase1-fixes` changes merged at `a36bad3` (fact-joining `dedupe_by_case`, failed-approaches and
+> `proxy`/`region` metadata, the `"unknown"`-dropping seam, and the fallback retry). The fixes changed the
+> prompt, the router and the recall seam, so **re-measure on a fresh bank before recording** and replace this
+> table. The Act 3 row's "abstained (contradictory)" is superseded by the post-fix dry runs recorded above,
+> which showed `abstained=False` on a fresh bank.
+
 | Step | Wall time | Result |
 |---|---|---|
 | Seed 6 cases into a fresh bank | 24–38 s | 6 inserted, 0 skipped, 0 rejected |
 | Act 1 | 27.6 s | abstained; 3 generic hypotheses, 0 citations; retained `d86dff414ff0b105` |
 | Act 2 | 29.7 s | 3 candidates; 1 valid citation; retained `e45829384ccf83fe` |
-| Act 3 | 11.7 s | abstained (contradictory); 0 citations; nothing retained |
+| Act 3 | 11.7 s | abstained (contradictory); 0 citations; nothing retained — **pre-fix; see the Act 3 dry runs above** |
 | **All three acts** | **~71 s** | every act exited 0 |
 
 A single act is **~12–30 s**, dominated by one structured LLM call (3–7 s, up to ~14 s through

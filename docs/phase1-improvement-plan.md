@@ -23,9 +23,9 @@
 | Fix | Demo effect (verified live on a fresh bank) |
 |---|---|
 | `dedupe_by_case` joins a case's facts | Act 2 recalls the root cause and the fix, not only the symptom |
-| Failed approaches, proxy, region in metadata | MEMORY shows *"Failed before: …"* and the full original environment |
+| Failed approaches, proxy, region in metadata | MEMORY shows *"Failed before: …"* and the original environment **for the four keys the recall layer carries: `service`, `runtime`, `proxy`, `region`.** Arbitrary additional environment keys are **not** currently carried through the recall seam, so `technology`, `corner`, `tool`, `stage` or any other custom key is stored in Hindsight metadata but never reaches MEMORY or the environment comparison |
 | Adapter drops `"unknown"` placeholders | No more "runtime (then unknown, now …)" |
-| Fallback retry, no extra fields, bare-array wrap | Removes the "two primary attempts returned INVALID_OUTPUT" seen in Rama's rehearsal |
+| Fallback retry, no extra fields, bare-array wrap | The fallback receives the same single retry, so a bad fallback answer does not immediately end the session. This does **not** remove the primary's `INVALID_OUTPUT` attempts — the primary attempt count is unchanged, so those log lines can still appear on camera |
 | CLI never drops engineer input; typos don't end a session; one-line errors | Survives a live demo typo and a Hindsight 504 |
 | Demo script narrates Act 3 as "conflict surfaced", not "abstains" | Matches behaviour (0/5 fresh banks abstained; 5/5 show both sides) |
 
@@ -35,12 +35,12 @@
 
 | # | Item | Criteria moved | Owner | Size | Status |
 |---|---|---|---|---|---|
-| 1 | **Rama reviews and merges `mukul/phase1-fixes`** into `integration/phase1` (PR) | all | Rama | 20 min | waiting |
+| 1 | **Rama reviews and merges `mukul/phase1-fixes`** into `integration/phase1` (PR) | all | Rama | 20 min | done — merged into `integration/phase1` at `a36bad3`; reviewed, all six fixes present in code and covered by tests |
 | 2 | **Act 4 — live learning.** After Act 3, the Act 1 issue recurs: *"billing-service creates duplicate invoice rows after the nightly job retries"*. MEMORY recalls **the case retained live in Act 1** with its root cause, fix and failed approach; the proposal cites it | Hindsight 25%, Innovation 30% | Mukul (script) | 15 min | **verified live 2026-09-28**: recalled as `relevant`, both memory-backed hypotheses cite it |
-| 3 | **`--no-memory` baseline.** Run the Act 2 issue once with memory disabled (generic proposal), then with memory (memory-backed, leads with the recorded fix): the before/after on the *same* issue, which is the organizers' key moment | Hindsight, Innovation | Mukul | 30 min | to build: a MemoryPort that returns an abstained view with reason "memory disabled for this run"; nothing retained |
+| 3 | **`--no-memory` baseline.** Run the Act 2 issue once with memory disabled (generic proposal), then with memory (memory-backed, leads with the recorded fix): the before/after on the *same* issue, which is the organizers' key moment | Hindsight, Innovation | Mukul | 30 min | to build: a MemoryPort that returns an abstained view with reason "memory disabled for this run". **Caveat: abstaining memory does not stop retention** — `investigate()` still calls `retain()` whenever the engineer reports a resolution, so the port's `retain()` must also decline, otherwise "nothing retained" is false. Nothing is written to the recording bank |
 | 4 | **Slim input flow**: one paste box; verify only the hypothesis you pursue (`H1 s y`); short resolution (`what fixed it` + outcome letter); `--file issue.txt` for repeatable takes | UX 15% | Mukul | 2 h | planned; every trust rule kept (each hypothesis still gets a logged decision; unpursued = reject + note) |
 | 5 | **README from a clean checkout**: install (`hindsight-client==0.10.1`), `.env` fields, fresh bank + ledger, seed, run, `inspect` | Technical 20% (DoD 1) | Mukul | 30 min | README section exists on the branch; verify on a clean clone |
-| 6 | **Pin `hindsight-client==0.10.1`** in `pyproject.toml` | Technical | Rama | 2 min | open |
+| 6 | **Pin `hindsight-client==0.10.1`** in `pyproject.toml` | Technical | Rama | 2 min | done — `hindsight-client==0.10.1` in `pyproject.toml`, matching the installed version |
 
 ### P1 — improves the submission if time allows
 
