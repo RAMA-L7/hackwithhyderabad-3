@@ -11,10 +11,12 @@ Thumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
+/graphify-out
 
 # Environment / Secrets (never commit these)
 .env
 .env.local
+.env.live
 .env.*.local
 *.pem
 *.key

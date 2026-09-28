@@ -1,0 +1,958 @@
+{
+  "run_id": "20260928T061541Z",
+  "env_file": ".env.live",
+  "models": {
+    "primary": {
+      "provider": "baseten",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "base_url": "https://inference.baseten.co/v1"
+    },
+    "fallback": {
+      "provider": "openrouter",
+      "model": "stealth/space-bunny-alpha",
+      "base_url": "https://openrouter.ai/api/v1"
+    }
+  },
+  "totals": {
+    "PASS": 14,
+    "FAIL": 0,
+    "BLOCKED": 0,
+    "INFO": 2,
+    "ERROR": 0
+  },
+  "results": [
+    {
+      "id": "E1",
+      "status": "PASS",
+      "observed": "python 3.11.4; tls={'openrouter': 'ok', 'fallback': 'ok'}",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "E2",
+      "status": "PASS",
+      "observed": "all LLM vars present (values not printed)",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "E3",
+      "status": "PASS",
+      "observed": "limit=100 usage=0.001203 free_tier=True rate_limit={'requests': -1, 'interval': '10s', 'note': 'This field is deprecated and safe to ignore.'}",
+      "decision": "budget rehearsal runs against these limits",
+      "data": {
+        "is_management_key": false,
+        "is_provisioning_key": false,
+        "limit": 100,
+        "limit_reset": null,
+        "limit_remaining": 99.998797,
+        "include_byok_in_limit": false,
+        "usage": 0.001203,
+        "usage_daily": 0.001203,
+        "usage_weekly": 0.001203,
+        "usage_monthly": 0.001203,
+        "byok_usage": 0,
+        "byok_usage_daily": 0,
+        "byok_usage_weekly": 0,
+        "byok_usage_monthly": 0,
+        "is_free_tier": true,
+        "expires_at": "2027-03-26T18:22:58.117Z",
+        "creator_user_id": "user_3JvEvqeFrpWxUxlOdcuItqhjDl5",
+        "organization_id": null,
+        "workspace_id": "1eaf3b5f-fc7a-5da0-8846-3a50c704bfdf",
+        "allowed_data_regions": [
+          "global"
+        ],
+        "free_model_daily_requests": {
+          "used": 0,
+          "limit": 50,
+          "remaining": 50
+        },
+        "rate_limit": {
+          "requests": -1,
+          "interval": "10s",
+          "note": "This field is deprecated and safe to ignore."
+        }
+      }
+    },
+    {
+      "id": "D1",
+      "status": "PASS",
+      "observed": "{\"stealth/space-bunny-alpha\": {\"structured_outputs\": false, \"response_format\": true, \"max_completion_tokens\": 524288, \"expiration_date\": null}, \"deepseek/deepseek-v4.1-flash\": {\"structured_outputs\": true, \"response_format\": true, \"max_completion_tokens\": 943718, \"expiration_date\": null}}",
+      "decision": "",
+      "data": {
+        "stealth/space-bunny-alpha": {
+          "structured_outputs": false,
+          "response_format": true,
+          "max_completion_tokens": 524288,
+          "expiration_date": null
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "structured_outputs": true,
+          "response_format": true,
+          "max_completion_tokens": 943718,
+          "expiration_date": null
+        }
+      }
+    },
+    {
+      "id": "D2",
+      "status": "PASS",
+      "observed": "status=200 listed=True (11 models)",
+      "decision": "",
+      "data": {
+        "ids": [
+          "openai/gpt-oss-120b",
+          "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B",
+          "zai-org/GLM-5.2",
+          "deepseek-ai/DeepSeek-V4-Flash-0731",
+          "zai-org/GLM-5.2-Fast",
+          "moonshotai/Kimi-K3",
+          "deepseek-ai/DeepSeek-V4-Pro-0813",
+          "zai-org/GLM-5.3-Flash",
+          "zai-org/GLM-5.3",
+          "zai-org/GLM-5.3-Fast",
+          "deepseek-ai/DeepSeek-V4.1-Flash"
+        ]
+      }
+    },
+    {
+      "id": "D3",
+      "status": "PASS",
+      "observed": "deepseek/deepseek-v4.1-flash: status=200 valid=True 6239ms",
+      "decision": "",
+      "data": {
+        "status": 200,
+        "error_class": null,
+        "ms": 6239,
+        "finish_reason": "stop",
+        "served_model": "deepseek/deepseek-v4.1-flash",
+        "provider_behind": "CoreWeave",
+        "valid": true,
+        "errors": [],
+        "cited": [
+          "3f9a1c07b2e4d815",
+          "seed-001",
+          "9b21e6d4c0a7f352"
+        ],
+        "invented": [],
+        "quirks": [
+          "reasoning_field"
+        ],
+        "tokens": {
+          "prompt_tokens": 763,
+          "completion_tokens": 848
+        },
+        "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 terminates the request because its client_max_body_size (or equivalent body-size limit) is set near 2 MB, so any upload above that threshold is cut off and surfaces to the client as ECONNRESET while sub-2MB uploads pass through untouched.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx error/access logs contain no 413 (or 'client intended to send too large body') entries for the failing 2.5MB uploads\",\"effective client_max_body_size is shown to be larger than 2 MB in the running config (nginx -T), yet 2.5MB still resets\",\"a direct request to the photo-api bypassing nginx also resets at the same 2MB threshold\"],\"recommended_",
+        "route": "backup",
+        "label": "D3"
+      }
+    },
+    {
+      "id": "S1",
+      "status": "PASS",
+      "observed": "{\"primary/strict/base\": \"200/valid\", \"primary/strict/extra_keywords\": \"200/valid\", \"fallback/strict/base\": \"404/invalid\", \"fallback/strict/extra_keywords\": \"404/invalid\", \"fallback/hint/base\": \"200/valid\"}",
+      "decision": "modes={'primary': 'strict', 'fallback': 'hint'}; send extra keywords=yes",
+      "data": {
+        "summary": {
+          "primary/strict/base": "200/valid",
+          "primary/strict/extra_keywords": "200/valid",
+          "fallback/strict/base": "404/invalid",
+          "fallback/strict/extra_keywords": "404/invalid",
+          "fallback/hint/base": "200/valid"
+        },
+        "modes": {
+          "primary": "strict",
+          "fallback": "hint"
+        },
+        "extra_keywords_accepted": true,
+        "errors": {
+          "fallback/strict/base": "{\"error\":{\"message\":\"No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection\",\"code\":404,\"metadata\":{\"routing_funnel\":[{\"step\":\"Initial Endpoints\",\"endpoint_count\":1}],\"failed_routing_step\"",
+          "fallback/strict/extra_keywords": "{\"error\":{\"message\":\"No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection\",\"code\":404,\"metadata\":{\"routing_funnel\":[{\"step\":\"Initial Endpoints\",\"endpoint_count\":1}],\"failed_routing_step\""
+        }
+      }
+    },
+    {
+      "id": "S2",
+      "status": "PASS",
+      "observed": "valid per route: {'primary': 5, 'fallback': 5} of 5",
+      "decision": "",
+      "data": {
+        "primary": [
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 6059
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 3241
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 2900
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 2477
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 5999
+          }
+        ],
+        "fallback": [
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 10447
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 10807
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 8677
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 9682
+          },
+          {
+            "status": 200,
+            "valid": true,
+            "errors": [],
+            "ms": 9825
+          }
+        ]
+      }
+    },
+    {
+      "id": "S4",
+      "status": "PASS",
+      "observed": "citations when abstained: {'primary': [[], [], []], 'fallback': [[], [], []]}",
+      "decision": "code forces supporting_case_ids=[] when abstained (already planned)",
+      "data": {
+        "primary": [
+          [],
+          [],
+          []
+        ],
+        "fallback": [
+          [],
+          [],
+          []
+        ]
+      }
+    },
+    {
+      "id": "S6",
+      "status": "PASS",
+      "observed": "primary={'p50': 3241, 'max': 6059, 'completion_tokens': [649, 537, 615, 551, 577]} fallback={'p50': 9825, 'max': 10807, 'completion_tokens': [564, 592, 454, 512, 558]} failover worst-case=16866ms",
+      "decision": "timeouts \u2248 1.5\u00d7 max: primary 10s, fallback 17s",
+      "data": {
+        "primary": {
+          "p50": 3241,
+          "max": 6059,
+          "completion_tokens": [
+            649,
+            537,
+            615,
+            551,
+            577
+          ]
+        },
+        "fallback": {
+          "p50": 9825,
+          "max": 10807,
+          "completion_tokens": [
+            564,
+            592,
+            454,
+            512,
+            558
+          ]
+        }
+      }
+    },
+    {
+      "id": "S3",
+      "status": "PASS",
+      "observed": "34 citations across 14 calls; invented/mangled: none",
+      "decision": "real ids are safe to show the model",
+      "data": {
+        "invented": {}
+      }
+    },
+    {
+      "id": "S5",
+      "status": "INFO",
+      "observed": "quirks seen: {'reasoning_field': 10}",
+      "decision": "each quirk seen gets a parser branch + fake-transport test in MK4",
+      "data": {
+        "where": {
+          "reasoning_field": [
+            "backup/D3",
+            "fallback/S1-hint-base",
+            "fallback/S2",
+            "fallback/S2",
+            "fallback/S2",
+            "fallback/S2",
+            "fallback/S2",
+            "fallback/S4",
+            "fallback/S4",
+            "fallback/S4"
+          ]
+        },
+        "samples": {
+          "reasoning_field": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 terminates the request because its client_max_body_size (or equivalent body-size limit) is set near 2 MB, so any upload above that threshold is cut off and surfaces to the client as ECONNRESET while sub-2MB uploads pass through untouched.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx error/access logs contain no 413 (or 'client intended to send too large body') entries for the failing 2.5MB uploads\",\"effective client_max_body_size is shown to be larger than 2 MB in the running config (nginx -T), yet 2.5MB still resets\",\"a direct request to the photo-api bypassing nginx also resets at the same 2MB threshold\"],\"recommended_"
+        }
+      }
+    },
+    {
+      "id": "S7",
+      "status": "INFO",
+      "observed": "strict on each route: {'primary': (200, 5528), 'fallback': (404, 112)}",
+      "decision": "never send strict to ['fallback'] (costs {'fallback': 112} ms each)",
+      "data": {
+        "wasted_ms": {
+          "fallback": 112
+        }
+      }
+    },
+    {
+      "id": "X1",
+      "status": "PASS",
+      "observed": "{\"primary\": {\"bad_model\": [404, \"MODEL_NOT_FOUND\"], \"bad_key\": [403, \"AUTH\"]}, \"fallback\": {\"bad_model\": [400, \"BAD_REQUEST\"], \"bad_key\": [401, \"AUTH\"]}}",
+      "decision": "",
+      "data": {
+        "primary": {
+          "bad_model": [
+            404,
+            "MODEL_NOT_FOUND"
+          ],
+          "bad_key": [
+            403,
+            "AUTH"
+          ]
+        },
+        "fallback": {
+          "bad_model": [
+            400,
+            "BAD_REQUEST"
+          ],
+          "bad_key": [
+            401,
+            "AUTH"
+          ]
+        }
+      }
+    },
+    {
+      "id": "X2",
+      "status": "PASS",
+      "observed": "5 back-to-back calls: [(200, None), (200, None), (200, None), (200, None), (200, None)]",
+      "decision": "",
+      "data": {
+        "seen": [
+          [
+            200,
+            null
+          ],
+          [
+            200,
+            null
+          ],
+          [
+            200,
+            null
+          ],
+          [
+            200,
+            null
+          ],
+          [
+            200,
+            null
+          ]
+        ]
+      }
+    },
+    {
+      "id": "X3",
+      "status": "PASS",
+      "observed": "attempts=[{'route': 'primary', 'error_class': 'UNREACHABLE'}, {'route': 'fallback', 'status': 200, 'valid': True}] fallback_used=True",
+      "decision": "",
+      "data": {
+        "attempts": [
+          {
+            "route": "primary",
+            "error_class": "UNREACHABLE"
+          },
+          {
+            "route": "fallback",
+            "status": 200,
+            "valid": true
+          }
+        ]
+      }
+    }
+  ],
+  "calls": [
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 6239,
+      "finish_reason": "stop",
+      "served_model": "deepseek/deepseek-v4.1-flash",
+      "provider_behind": "CoreWeave",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 763,
+        "completion_tokens": 848
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 terminates the request because its client_max_body_size (or equivalent body-size limit) is set near 2 MB, so any upload above that threshold is cut off and surfaces to the client as ECONNRESET while sub-2MB uploads pass through untouched.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx error/access logs contain no 413 (or 'client intended to send too large body') entries for the failing 2.5MB uploads\",\"effective client_max_body_size is shown to be larger than 2 MB in the running config (nginx -T), yet 2.5MB still resets\",\"a direct request to the photo-api bypassing nginx also resets at the same 2MB threshold\"],\"recommended_",
+      "route": "backup",
+      "label": "D3"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 5528,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 569
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"The nginx-1.24 reverse proxy in front of photo-api has a client_max_body_size limit of 2m, so requests over 2 MB are rejected by the proxy and the connection is reset before reaching the application.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx error log shows no 413 request entity too large entries for the failing uploads\",\n        \"nginx effective client_max_body_size is configured to a value greater than 2.5MB\",\n        \"uploads over 2MB succeed when sent directly to photo-api bypassing nginx\"\n      ],\n      \"recommended_next_step\": \"Check nginx effective config for clien",
+      "route": "primary",
+      "label": "S1-strict-base"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 3070,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 545
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 has client_max_body_size set to 2m, causing nginx to reset connections for uploads exceeding 2 MB.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx error log shows no '413 Request Entity Too Large' or 'client intended to send too large body' entries for the failing uploads\",\n        \"nginx configuration inspection shows client_max_body_size is set to a value greater than 2m (e.g., 10m)\",\n        \"Increasing client_max_body_size does not resolve the ECONNRESET failures\"\n      ],\n      \"recommended_next_step\": \"Check nginx configuration for client_max_body_size and insp",
+      "route": "primary",
+      "label": "S1-strict-extra_keywords"
+    },
+    {
+      "status": 404,
+      "error_class": "MODEL_NOT_FOUND",
+      "ms": 112,
+      "finish_reason": null,
+      "served_model": null,
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": null,
+        "completion_tokens": null
+      },
+      "sample": "{\"error\":{\"message\":\"No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection\",\"code\":404,\"metadata\":{\"routing_funnel\":[{\"step\":\"Initial Endpoints\",\"endpoint_count\":1}],\"failed_routing_step\":\"Filter by Parameters\"}}}",
+      "route": "fallback",
+      "label": "S1-strict-base"
+    },
+    {
+      "status": 404,
+      "error_class": "MODEL_NOT_FOUND",
+      "ms": 87,
+      "finish_reason": null,
+      "served_model": null,
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": null,
+        "completion_tokens": null
+      },
+      "sample": "{\"error\":{\"message\":\"No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection\",\"code\":404,\"metadata\":{\"routing_funnel\":[{\"step\":\"Initial Endpoints\",\"endpoint_count\":1}],\"failed_routing_step\":\"Filter by Parameters\"}}}",
+      "route": "fallback",
+      "label": "S1-strict-extra_keywords"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 11675,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 656
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 has client_max_body_size set to 2m and terminates requests at the proxy before they reach the Python service.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"The active nginx configuration shows client_max_body_size greater than 2.5MB for the upload location or server.\",\"Request-body access logs show nginx is forwarding 2.5MB uploads to photo-api.\",\"Increasing the effective client_max_body_size above 2.5MB does not change the failure rate.\"],\"recommended_next_step\":\"Inspect the effective nginx configuration with nginx -T, verify which location handles uploads, check nginx error logs for request-body limit messages, and temporaril",
+      "route": "fallback",
+      "label": "S1-hint-base"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 2477,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 551
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"The nginx-1.24 reverse proxy in front of photo-api enforces a client_max_body_size limit that is approximately 2 MB, causing it to reset the connection on larger uploads.\",\n      \"supporting_case_ids\": [\"3f9a1c07b2e4d815\"],\n      \"refutation_conditions\": [\n        \"nginx error log shows no 413 or request body too large entries for failed uploads\",\n        \"nginx.conf client_max_body_size is set above 2 MB\",\n        \"A payload directly sent to photo-api bypassing nginx still fails at 2.5 MB\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx-1.24 configuration (client_max_body_size) and error log for 413s, then run a payload size sweep throug",
+      "route": "primary",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 2900,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 615
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24's client_max_body_size is set to 2 MB (or an equivalent small value), causing nginx to reset the connection for uploads larger than that limit.\",\n      \"supporting_case_ids\": [\"3f9a1c07b2e4d815\"],\n      \"refutation_conditions\": [\n        \"nginx configuration shows client_max_body_size is 2m or less.\",\n        \"Increasing client_max_body_size to a larger value (e.g., 10m) does not eliminate the ECONNRESET failures for 2.5 MB uploads.\",\n        \"nginx error log does not contain 'client intended to send too large body' or similar 413 entries at the time of failure.\"\n      ],\n      \"recommended_next_step\": \"Inspect the effective nginx con",
+      "route": "primary",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 3241,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 537
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 proxy has client_max_body_size set to 2m, causing it to reset connections for uploads exceeding that limit.\",\n      \"supporting_case_ids\": [\"3f9a1c07b2e4d815\"],\n      \"refutation_conditions\": [\n        \"nginx error log does not contain 413 or 'client intended to send too large body' entries for failed uploads.\",\n        \"nginx configuration shows client_max_body_size is larger than 2 MB (e.g., 10m) or unset.\",\n        \"Uploads over 2 MB succeed after increasing client_max_body_size, but failures persist for other reasons.\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx configuration for client_max_body_size and check nginx err",
+      "route": "primary",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 5999,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 577
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 has client_max_body_size set to 2m, causing nginx to reset/close connections for uploads exceeding that limit.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx configuration shows client_max_body_size larger than 2m (e.g., 10m).\",\n        \"nginx error log does not contain 413 Request Entity Too Large entries for the failing uploads.\",\n        \"Increasing client_max_body_size to 10m and re-testing still results in ECONNRESET for 2.5MB uploads.\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx-1.24 configuration for client_max_body_size, check nginx error logs for",
+      "route": "primary",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 6059,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 649
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 in front of photo-api has a client_max_body_size of 2 MB, causing nginx to reset the connection for uploads over 2 MB before they reach the Python service.\",\n      \"supporting_case_ids\": [\"3f9a1c07b2e4d815\"],\n      \"refutation_conditions\": [\n        \"nginx error log shows no 413 Request Entity Too Large entries for the failing uploads\",\n        \"nginx config shows client_max_body_size is set higher than 2 MB or unlimited\",\n        \"Uploads over 2 MB still fail when bypassing nginx and hitting photo-api directly\",\n        \"Increasing client_max_body_size has no effect on the 2.5 MB upload failures\"\n      ],\n      \"recommended_next_step",
+      "route": "primary",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 8677,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 454
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx is rejecting request bodies larger than its configured client_max_body_size limit, likely 2m, and resetting the client connection.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx access or error logs show no oversized-body rejection near failed requests\",\"The active nginx configuration confirms client_max_body_size is greater than 2 MB and nginx receives the complete 2.5 MB request body\"],\"recommended_next_step\":\"Inspect the active nginx configuration and error/access logs for oversized-body messages, then test 2.5 MB uploads with client_max_body_size temporarily raised to 10 MB.\"},{\"hypothesis\":\"A different nginx request-handli",
+      "route": "fallback",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 9682,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 512
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"Nginx is rejecting or prematurely closing request bodies larger than 2 MB, most likely because client_max_body_size is configured to 2m or an equivalent body-size limit is active.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\",\"seed-001\"],\"refutation_conditions\":[\"Nginx configuration and error logs show no 2 MB body-size limit or request-body rejection at the observed threshold.\",\"Increasing the suspected Nginx body limit does not change the failure rate, and request bodies reach the application intact.\"],\"recommended_next_step\":\"Inspect nginx-1.24 effective configuration and error/access logs for size-limit responses, verify client_max_body_size and related bufferi",
+      "route": "fallback",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 9825,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 558
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"The nginx reverse proxy is enforcing a 2 MB client_max_body_size limit and resetting the connection before the request reaches photo-api.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"The active nginx configuration has no 2 MB request-body limit.\",\"A 2.5 MB upload succeeds when sent directly to photo-api while failing through nginx.\",\"Nginx logs show the request was fully received and forwarded, with no 413 or premature-close event.\"],\"recommended_next_step\":\"Inspect nginx-1.24 client_max_body_size and error/access logs, then compare direct-to-photo-api and through-proxy uploads at 1 MB, 2 MB, and 2.5 MB.\"},{\"hypothesis\":\"An intermediate ",
+      "route": "fallback",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 10447,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 564
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 is enforcing a 2 MB client request-body limit and resetting or closing larger upload connections before they reach photo-api.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx configuration contains an effective client_max_body_size greater than 2.5 MB for the upload location.\",\"nginx error logs show no oversized-body rejection around the failed requests.\",\"Requests confirmed to reach photo-api are still reset before or during upload.\"],\"recommended_next_step\":\"Inspect the effective nginx configuration and error log for the upload route, checking client_max_body_size and related body-size directives. If the effective limit is",
+      "route": "fallback",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 10807,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 592
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 is enforcing a 2 MB client_max_body_size limit and resetting or prematurely closing upload connections above it.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"Inspecting the active nginx-1.24 configuration shows client_max_body_size is greater than 2.5 MB and has no size-dependent include or access rule that overrides it.\",\"A payload sweep with the same endpoint, request encoding, and headers shows no reproducible failure threshold near 2 MB.\",\"nginx access and error logs conclusively attribute every reset to an upstream connection rather than request-body validation.\"],\"recommended_next_step\":\"Check the active nginx configurat",
+      "route": "fallback",
+      "label": "S2"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 3197,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 231,
+        "completion_tokens": 484
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"The nginx proxy has a client_max_body_size limit set to 2 MB, causing it to reject/reset uploads larger than that.\",\n      \"supporting_case_ids\": [],\n      \"refutation_conditions\": [\n        \"nginx configuration shows client_max_body_size is set to a value larger than 2 MB (e.g., 10 MB or 0).\",\n        \"Uploads of 2.5 MB succeed when bypassing nginx (direct to photo-api).\",\n        \"nginx error logs show no 413 Request Entity Too Large errors or connection reset messages for large uploads.\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx configuration for 'client_max_body_size' and test direct upload to photo-api without nginx.\"\n    },\n  ",
+      "route": "primary",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 4223,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 231,
+        "completion_tokens": 536
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 has a request body size limit (client_max_body_size) set below 2 MB, causing it to reject or reset larger uploads.\",\n      \"supporting_case_ids\": [],\n      \"refutation_conditions\": [\n        \"nginx configuration shows client_max_body_size >= 2 MB or unset (default 1 MB but explicitly overridden).\",\n        \"Testing a 2 MB upload succeeds when bypassing nginx (direct to photo-api).\",\n        \"nginx error logs show a different error (e.g., timeout, upstream reset) rather than 'client intended to send too large body'.\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx configuration for client_max_body_size and temporarily increase i",
+      "route": "primary",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 4807,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 231,
+        "completion_tokens": 698
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx proxy buffer size is too small for uploads over 2 MB, causing nginx to reset the client connection (ECONNRESET) when the request body exceeds its buffer limits.\",\n      \"supporting_case_ids\": [],\n      \"refutation_conditions\": [\n        \"If increasing client_body_buffer_size, client_max_body_size, or related nginx buffer directives to accommodate larger uploads does not change the failure threshold or eliminate ECONNRESET, this hypothesis is refuted.\",\n        \"If nginx error logs show no buffer-related errors (e.g., 'client intended to send too large body', 'upstream sent too big header') for the 2.5 MB uploads, this hypothesis is weakene",
+      "route": "primary",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 7751,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 370,
+        "completion_tokens": 475
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"An nginx or intermediary body-size threshold near 2 MB is terminating or resetting upload connections before they reach photo-api.\",\"supporting_case_ids\":[],\"refutation_conditions\":[\"Access logs show the full 2.5 MB request body reaches photo-api before any reset.\",\"Direct requests to photo-api bypassing nginx also reproduce the boundary at 2 MB.\",\"Testing with nginx client_max_body_size explicitly set well above 2.5 MB leaves the failure unchanged.\"],\"recommended_next_step\":\"Inspect nginx error and access logs for requests around the failure, record the upstream status, and repeat a 2.5 MB upload with client_max_body_size raised above 2.5 MB.\"},{\"hypothesis\":\"p",
+      "route": "fallback",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 8218,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 370,
+        "completion_tokens": 565
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"Nginx is enforcing or mishandling a 2 MB client-body boundary, such as client_max_body_size or an interacting buffer limit, and closes the upload connection before it reaches photo-api.\",\"supporting_case_ids\":[],\"refutation_conditions\":[\"Nginx access and error logs show the 2.5 MB request was fully accepted and forwarded to photo-api.\",\"The upstream receives the complete 2.5 MB request body and the reset occurs entirely within photo-api.\",\"Testing with an equivalent 2.5 MB request against a known-good client and Nginx configuration succeeds.\"],\"recommended_next_step\":\"Inspect the effective Nginx configuration and error/access logs for the failed requests, then r",
+      "route": "fallback",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 8420,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 370,
+        "completion_tokens": 559
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"Nginx is enforcing a request-body size limit near 2 MB (for example, client_max_body_size or an ingress/body-size policy), causing oversized upload requests to be reset before they reach photo-api.\",\"supporting_case_ids\":[],\"refutation_conditions\":[\"The effective Nginx configuration shows a body-size limit at or above 2.5 MB on the relevant server/location.\",\"A direct request bypassing Nginx successfully uploads a 2.5 MB file.\",\"Nginx access/error logs for failed uploads show the request was accepted and forwarded upstream, with no body-size-related rejection or reset.\"],\"recommended_next_step\":\"Inspect the effective Nginx configuration and error/access logs for",
+      "route": "fallback",
+      "label": "S4"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 9447,
+      "finish_reason": "stop",
+      "served_model": "stealth/space-bunny-alpha",
+      "provider_behind": "Stealth",
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 679,
+        "completion_tokens": 595
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 is rejecting requests larger than its configured client_max_body_size, likely 2m, and closing the connection before they reach photo-api.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx configuration shows client_max_body_size is greater than 2 MB for the relevant server/location.\",\"nginx access or error logs show the 2.5 MB requests reach photo-api and are reset by the application or an upstream dependency.\",\"Uploads succeed above 2 MB when sent through the same nginx route without changing the request.\"],\"recommended_next_step\":\"Inspect the effective nginx configuration and error/access logs for the upload route, then ver",
+      "route": "fallback",
+      "label": "X3"
+    }
+  ]
+}

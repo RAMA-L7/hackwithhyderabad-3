@@ -1,0 +1,404 @@
+{
+  "run_id": "20260928T061029Z",
+  "env_file": ".env.live",
+  "models": {
+    "primary": {
+      "provider": "openrouter",
+      "model": "stealth/space-bunny-alpha",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "fallback": {
+      "provider": "baseten",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "base_url": "https://inference.baseten.co/v1"
+    }
+  },
+  "totals": {
+    "PASS": 3,
+    "FAIL": 0,
+    "BLOCKED": 0,
+    "INFO": 0,
+    "ERROR": 0
+  },
+  "results": [
+    {
+      "id": "E1",
+      "status": "PASS",
+      "observed": "python 3.11.4; tls={'openrouter': 'ok', 'fallback': 'ok'}",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "E2",
+      "status": "PASS",
+      "observed": "all LLM vars present (values not printed)",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S8",
+      "status": "PASS",
+      "observed": "{\"none\": {\"http\": [200], \"valid\": 0, \"p50_ms\": 22053, \"tokens\": [3000, 3000, 3000], \"reasoning_field\": 3}, \"reasoning_effort_low\": {\"http\": [200], \"valid\": 0, \"p50_ms\": 16190, \"tokens\": [3000, 3000, 3000], \"reasoning_field\": 3}, \"thinking_off\": {\"http\": [200], \"valid\": 3, \"p50_ms\": 3707, \"tokens\": [523, 659, 524], \"reasoning_field\": 0}, \"openrouter_style_low\": {\"http\": [200], \"valid\": 2, \"p50_ms\": 15392, \"tokens\": [2716, 2174, 3000], \"reasoning_field\": 3}}",
+      "decision": "fallback reasoning control = thinking_off",
+      "data": {
+        "none": {
+          "http": [
+            200
+          ],
+          "valid": 0,
+          "p50_ms": 22053,
+          "tokens": [
+            3000,
+            3000,
+            3000
+          ],
+          "reasoning_field": 3
+        },
+        "reasoning_effort_low": {
+          "http": [
+            200
+          ],
+          "valid": 0,
+          "p50_ms": 16190,
+          "tokens": [
+            3000,
+            3000,
+            3000
+          ],
+          "reasoning_field": 3
+        },
+        "thinking_off": {
+          "http": [
+            200
+          ],
+          "valid": 3,
+          "p50_ms": 3707,
+          "tokens": [
+            523,
+            659,
+            524
+          ],
+          "reasoning_field": 0
+        },
+        "openrouter_style_low": {
+          "http": [
+            200
+          ],
+          "valid": 2,
+          "p50_ms": 15392,
+          "tokens": [
+            2716,
+            2174,
+            3000
+          ],
+          "reasoning_field": 3
+        }
+      }
+    }
+  ],
+  "calls": [
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 2047,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 524
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"The nginx-1.24 reverse proxy's client_max_body_size is set to 2m, causing nginx to reset connections for uploads exceeding 2 MB before they reach photo-api.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\",\n        \"seed-001\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx error log shows no 413 Request Entity Too Large entries during failed uploads.\",\n        \"nginx configuration shows client_max_body_size greater than 2m.\",\n        \"A direct upload to photo-api bypassing nginx succeeds with a 2.5 MB payload.\"\n      ],\n      \"recommended_next_step\": \"Check nginx configuration for client_max_body_size and inspect nginx error ",
+      "route": "fallback",
+      "label": "S8-thinking_off"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 3707,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "seed-001",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 659
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24's client_max_body_size is set to 2m, so nginx rejects/resets any upload over 2MB before it reaches photo-api.\",\n      \"supporting_case_ids\": [\"3f9a1c07b2e4d815\", \"seed-001\"],\n      \"refutation_conditions\": [\n        \"nginx -T shows client_max_body_size is 10m or unlimited\",\n        \"nginx error log shows no 413 / 'client intended to send too large body' entries for the failing 2.5MB uploads\",\n        \"A 2.5MB upload through nginx with photo-api bypassed (e.g., direct to a same-port echo server) still resets\"\n      ],\n      \"recommended_next_step\": \"Dump the effective nginx config with `nginx -T` and grep for client_max_body_size; simu",
+      "route": "fallback",
+      "label": "S8-thinking_off"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 4257,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "9b21e6d4c0a7f352",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [],
+      "tokens": {
+        "prompt_tokens": 549,
+        "completion_tokens": 523
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 proxy is terminating the connection because client_max_body_size is set near 2m, causing ECONNRESET on uploads over 2 MB before photo-api can handle them.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx error log shows no 413 Request Entity Too Large entries for failed uploads.\",\n        \"nginx client_max_body_size is confirmed to be greater than 2.5 MB.\",\n        \"Bypassing nginx and sending the same >2 MB upload directly to photo-api succeeds.\"\n      ],\n      \"recommended_next_step\": \"Inspect nginx-1.24 configuration for client_max_body_size and check nginx error l",
+      "route": "fallback",
+      "label": "S8-thinking_off"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 11343,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "unparseable"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"The nginx-1.24 reverse proxy in front of photo-api has client_max_body_size configured near 2 MB, so uploads above that threshold are rejected or reset before reaching photo-api.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx configuration shows no client_max_body_size limit or a limit greater than 2.5 MB\",\"nginx error log contains no 413 or client_max_body_size-related entry during a 2.5 MB upload\",\"raising client_max_body_size to 10 MB does not allow 2.5 MB uploads to succeed\",\"a direct 2.5 MB request to photo-api bypassing nginx succeeds\"],\"recommended_next_step\":\"Inspect nginx configuration with nginx -T for client_max_body_size,",
+      "route": "fallback",
+      "label": "S8-reasoning_effort_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 14303,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 2174
+      },
+      "sample": "{\n  \"hypotheses\": [\n    {\n      \"hypothesis\": \"nginx-1.24 is enforcing an effective client_max_body_size of about 2 MB for photo-api, causing nginx to reset/close oversized uploads before they reach the Python upstream.\",\n      \"supporting_case_ids\": [\n        \"3f9a1c07b2e4d815\"\n      ],\n      \"refutation_conditions\": [\n        \"nginx error.log shows no 'client intended to send too large body' or 413-related entries during 2.5 MB failures.\",\n        \"A 2.5 MB upload sent directly to the photo-api upstream port, bypassing nginx, succeeds.\",\n        \"Raising client_max_body_size to a value above 2.5 MB and reloading nginx does not change the ECONNRESET behavior.\"\n      ],\n      \"recommended_ne",
+      "route": "fallback",
+      "label": "S8-openrouter_style_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 14687,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "empty_content"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"id\":\"chatcmpl-9ec3d840b1f941cb83d86ff44a408dab\",\"choices\":[{\"index\":0,\"message\":{\"content\":null,\"role\":\"assistant\",\"reasoning_content\":\"We need answer JSON only. Need propose 2-3 hypotheses for current issue. Need follow rules: past cases prior experience not evidence. supporting_case_ids only from past cases exact. refutation_conditions observations that prove hypothesis wrong. recommended_next_step. Need current issue: photo-api resets connections on uploads over 2MB; under succeed. service photo-api proxy nginx-1.24 runtime python3.11. Measurement 20/20 2.5MB fail ECONNRESET, 20/20 1MB succeed.\\n\\nWe need hypotheses. Likely nginx client_max_body_size 2m. Past case relevant with nginx 1.",
+      "route": "fallback",
+      "label": "S8-none"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 15392,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "unparseable"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 has a request-body size limit near 2MB (e.g., client_max_body_size 2m) for photo-api, causing nginx to close/reset uploads larger than that before or while proxying to the upstream.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\",\"seed-001\"],\"refutation_conditions\":[\"The active nginx config for the relevant server/location shows client_max_body_size greater than 2MB.\",\"nginx error log around failed uploads contains no 413 or 'client intended to send too large body' entries.\",\"A 2.5MB upload sent directly to the photo-api upstream, bypassing nginx, succeeds.\"],\"recommended_next_step\":\"Run nginx -T and inspect http/server/location client_max_body_size; corre",
+      "route": "fallback",
+      "label": "S8-openrouter_style_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 16190,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "unparseable"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 on photo-api has an effective client_max_body_size of 2 MB (server or location level), so uploads above 2 MB are rejected/closed by nginx and the client sees ECONNRESET.\",\"supporting_case_ids\":[\"",
+      "route": "fallback",
+      "label": "S8-reasoning_effort_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 17347,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "empty_content"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"id\":\"chatcmpl-3cc2c46cd202432783aa6ead48616f88\",\"choices\":[{\"index\":0,\"message\":{\"content\":null,\"role\":\"assistant\",\"reasoning_content\":\"We need answer only JSON. Need propose 2-3 hypotheses current issue. Need follow rules. We need infer from current issue: photo-api resets connections on uploads over 2 MB; under 2 MB succeed. service=photo-api proxy=nginx-1.24 runtime=python3.11. measurement 20/20 2.5MB fail ECONNRESET, 1MB succeed.\\n\\nPast cases prior experience not evidence about current system. supporting_case_ids may contain only case_id values from PAST CASES, copied exactly. Use [] for not based. We can base hypotheses on past similar cases? They say past cases are prior experience,",
+      "route": "fallback",
+      "label": "S8-reasoning_effort_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 19128,
+      "finish_reason": "stop",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": true,
+      "errors": [],
+      "cited": [
+        "3f9a1c07b2e4d815",
+        "9b21e6d4c0a7f352"
+      ],
+      "invented": [],
+      "quirks": [
+        "reasoning_field"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 2716
+      },
+      "sample": "{\"hypotheses\":[{\"hypothesis\":\"nginx-1.24 has client_max_body_size set to 2m or lower, so nginx aborts/reset connections for uploads over 2MB before forwarding to photo-api.\",\"supporting_case_ids\":[\"3f9a1c07b2e4d815\"],\"refutation_conditions\":[\"nginx config shows client_max_body_size >= 3m or no effective limit.\",\"nginx error log lacks 'client intended to send too large body' or 413 during 2.5MB uploads.\",\"A 2.5MB upload sent directly to photo-api bypassing nginx also fails with ECONNRESET.\"],\"recommended_next_step\":\"Run nginx -T to inspect client_max_body_size, tail nginx error log during a 2.5MB upload, and test a 2.5MB upload directly to photo-api bypassing nginx.\"},{\"hypothesis\":\"The Pytho",
+      "route": "fallback",
+      "label": "S8-openrouter_style_low"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 22053,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "empty_content"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"id\":\"chatcmpl-16b9f9fdd03e440aa804c355e9c817a5\",\"choices\":[{\"index\":0,\"message\":{\"content\":null,\"role\":\"assistant\",\"reasoning_content\":\"We need answer JSON only. Need propose 2-3 hypotheses for current issue. Must follow rules. Past cases are prior experience, NOT evidence about current system. supporting_case_ids may contain only case_id values from PAST CASES copied exactly, use [] for not based. Need refutation_conditions observations prove hypothesis wrong. recommended_next_step.\\n\\nCurrent issue: photo-api resets connections on uploads over 2 MB; under 2 MB succeed. service=photo-api proxy=nginx-1.24 runtime=python3.11. Measurement 20/20 2.5MB fail ECONNRESET; 20/20 1MB succeed.\\n\\nWe",
+      "route": "fallback",
+      "label": "S8-none"
+    },
+    {
+      "status": 200,
+      "error_class": null,
+      "ms": 22444,
+      "finish_reason": "length",
+      "served_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider_behind": null,
+      "valid": false,
+      "errors": [
+        "unparseable or empty"
+      ],
+      "cited": [],
+      "invented": [],
+      "quirks": [
+        "reasoning_field",
+        "finish_length",
+        "empty_content"
+      ],
+      "tokens": {
+        "prompt_tokens": 575,
+        "completion_tokens": 3000
+      },
+      "sample": "{\"id\":\"chatcmpl-ad0d9a297ffb4b88bb5e5eb42db2afd8\",\"choices\":[{\"index\":0,\"message\":{\"content\":null,\"role\":\"assistant\",\"reasoning_content\":\"We need answer JSON only. Need propose 2-3 hypotheses for current issue. Must follow rules. Past cases prior experience not evidence. supporting_case_ids only from past cases exact. Refutation conditions observations proving wrong. Recommended next step.\\n\\nCurrent: photo-api resets connections on uploads over 2 MB; under 2 MB succeed. service=photo-api proxy=nginx-1.24 runtime=python3.11. measurement 20/20 2.5MB fail ECONNRESET, 20/20 1MB succeed.\\n\\nNeed hypotheses. Likely nginx client_max_body_size 2m causing reset. Past case 3f9a1c07b2e4d815 relevant. ",
+      "route": "fallback",
+      "label": "S8-none"
+    }
+  ]
+}

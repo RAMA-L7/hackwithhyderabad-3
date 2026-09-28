@@ -1,0 +1,151 @@
+{
+  "run_id": "20260928T055521Z",
+  "env_file": ".env.live",
+  "models": {
+    "primary": {
+      "provider": "openrouter",
+      "model": "stealth/space-bunny-alpha",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "fallback": {
+      "provider": "baseten",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "base_url": "https://inference.baseten.co/v1"
+    }
+  },
+  "totals": {
+    "PASS": 2,
+    "FAIL": 1,
+    "BLOCKED": 13,
+    "INFO": 0,
+    "ERROR": 0
+  },
+  "results": [
+    {
+      "id": "E1",
+      "status": "PASS",
+      "observed": "python 3.11.4; tls={'openrouter': 'ok', 'fallback': 'ok'}",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "E2",
+      "status": "FAIL",
+      "observed": "missing: ['LLM_PRIMARY_API_KEY', 'LLM_FALLBACK_API_KEY']",
+      "decision": "fill keys in the env file; S/X/D2/D3/E3 are BLOCKED until then",
+      "data": {}
+    },
+    {
+      "id": "E3",
+      "status": "BLOCKED",
+      "observed": "no OpenRouter primary key",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "D1",
+      "status": "PASS",
+      "observed": "{\"stealth/space-bunny-alpha\": {\"structured_outputs\": false, \"response_format\": true, \"max_completion_tokens\": 524288, \"expiration_date\": null}, \"deepseek/deepseek-v4.1-flash\": {\"structured_outputs\": true, \"response_format\": true, \"max_completion_tokens\": 943718, \"expiration_date\": null}}",
+      "decision": "",
+      "data": {
+        "stealth/space-bunny-alpha": {
+          "structured_outputs": false,
+          "response_format": true,
+          "max_completion_tokens": 524288,
+          "expiration_date": null
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "structured_outputs": true,
+          "response_format": true,
+          "max_completion_tokens": 943718,
+          "expiration_date": null
+        }
+      }
+    },
+    {
+      "id": "D2",
+      "status": "BLOCKED",
+      "observed": "no fallback key",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "D3",
+      "status": "BLOCKED",
+      "observed": "no OpenRouter key",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S1",
+      "status": "BLOCKED",
+      "observed": "keys missing",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S2",
+      "status": "BLOCKED",
+      "observed": "keys missing",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S4",
+      "status": "BLOCKED",
+      "observed": "keys missing",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S6",
+      "status": "BLOCKED",
+      "observed": "S2 did not run",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S3",
+      "status": "BLOCKED",
+      "observed": "no successful structured calls",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S5",
+      "status": "BLOCKED",
+      "observed": "no structured calls",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "S7",
+      "status": "BLOCKED",
+      "observed": "S1 did not run",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "X1",
+      "status": "BLOCKED",
+      "observed": "keys missing",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "X2",
+      "status": "BLOCKED",
+      "observed": "no primary key",
+      "decision": "",
+      "data": {}
+    },
+    {
+      "id": "X3",
+      "status": "BLOCKED",
+      "observed": "no fallback key",
+      "decision": "",
+      "data": {}
+    }
+  ],
+  "calls": []
+}
