@@ -288,3 +288,34 @@ class DedupeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerbatimMetadataTests(StoreTestBase):
+    """Live 2026-09-28: Hindsight's fact extraction kept a seed's symptom, root cause and fix but dropped its
+    failed approach and proxy. Fields the demo depends on now travel in metadata, which is stored verbatim."""
+
+    def test_retain_stores_full_environment_and_failed_approaches(self):
+        client = FakeHindsightClient()
+        store = HindsightMemoryStore(memory_config(self.tmp_path), client=client)
+        store.retain(case(environment={"service": "orders-api", "runtime": "python3.10", "proxy": "envoy-1.4"}))
+        metadata = client.retained[0]["metadata"]
+        self.assertEqual((metadata["proxy"], metadata["region"]), ("envoy-1.4", "unknown"))
+        self.assertEqual(metadata["failed_approaches"], "raised client timeout (why it failed: proxy closed first)")
+
+    def test_case_without_failed_approaches_has_no_key(self):
+        client = FakeHindsightClient()
+        HindsightMemoryStore(memory_config(self.tmp_path), client=client).retain(case(failed_approaches=[]))
+        self.assertNotIn("failed_approaches", client.retained[0]["metadata"])
+
+    def test_recall_shows_failed_approach_once_per_case_and_full_environment(self):
+        meta = {"case_key": "case-a", "outcome": "resolved", "service": "orders-api", "runtime": "python3.10",
+                "proxy": "envoy-1.4", "region": "unknown", "root_cause_key": "proxy limit",
+                "failed_approaches": "raised client timeout (why it failed: proxy closed first)"}
+        rows = [FakeMemory("uploads reset above 2MB", meta, FakeScores(0.9, 0.8)),
+                FakeMemory("fixed by raising max_request_bytes", meta, FakeScores(0.5, 0.6))]
+        store = HindsightMemoryStore(memory_config(self.tmp_path), client=FakeHindsightClient(rows))
+        [item] = store.recall(query="orders-api resets").items
+        self.assertEqual(item.text.count("Failed before:"), 1)
+        self.assertTrue(item.text.endswith("Failed before: raised client timeout (why it failed: proxy closed first)"))
+        self.assertIn("fixed by raising max_request_bytes", item.text)
+        self.assertEqual(item.environment["proxy"], "envoy-1.4")

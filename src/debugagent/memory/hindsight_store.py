@@ -34,14 +34,26 @@ def compute_case_key(case: MemoryCase, session_id: str) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
+# Environment keys carried in metadata. Metadata is stored verbatim; the case text is not (Hindsight
+# extracts it into LLM-chosen facts, measured live 2026-09-28 to drop proxy/region per bank).
+ENV_METADATA_KEYS = ("service", "runtime", "proxy", "region")
+MAX_FAILED_APPROACHES_CHARS = 500
+
+
 def case_metadata(case: MemoryCase, case_key: str) -> dict[str, str]:
-    return {
+    metadata = {
         "case_key": case_key,
         "outcome": case.outcome,
-        "service": case.environment.get("service", "unknown"),
-        "runtime": case.environment.get("runtime", "unknown"),
+        **{key: case.environment.get(key, "unknown") for key in ENV_METADATA_KEYS},
         "root_cause_key": (case.root_cause or "unconfirmed").strip().lower()[:64],
     }
+    if case.failed_approaches:
+        # Stored verbatim so recall can always show it: live on 2026-09-28 Hindsight's extraction kept the
+        # symptom, root cause and fix of a seed but not its failed approach, so Act 2 could not warn about it.
+        metadata["failed_approaches"] = "; ".join(
+            f"{f.approach} (why it failed: {f.why_failed})" for f in case.failed_approaches
+        )[:MAX_FAILED_APPROACHES_CHARS]
+    return metadata
 
 
 def case_tags(case: MemoryCase) -> list[str]:
@@ -252,6 +264,7 @@ class HindsightMemoryStore:
 
         raw_items = _attr(response, "results", []) or []
         items: list[RecallResult] = []
+        failed_before: dict[str, str] = {}
         for raw in raw_items:
             metadata = _attr(raw, "metadata", {}) or {}
             if not isinstance(metadata, dict):
@@ -266,17 +279,21 @@ class HindsightMemoryStore:
                     score_final=float(final_score) if final_score is not None else 0.0,
                     score_semantic=_score(raw, "semantic"),
                     score_keyword=_score(raw, "keyword"),
-                    environment={
-                        "service": str(metadata.get("service", "unknown")),
-                        "runtime": str(metadata.get("runtime", "unknown")),
-                    },
+                    environment={key: str(metadata.get(key, "unknown")) for key in ENV_METADATA_KEYS},
                     outcome=metadata.get("outcome"),
                     root_cause_key=metadata.get("root_cause_key"),
                     mentioned_at=_attr(raw, "mentioned_at"),
                 )
             )
+            if metadata.get("failed_approaches") and case_key:
+                failed_before[str(case_key)] = str(metadata["failed_approaches"])
+        collapsed = [
+            replace(item, text=f"{item.text} | Failed before: {failed_before[item.case_id]}")
+            if item.case_id in failed_before else item
+            for item in dedupe_by_case(items)
+        ]
         return RecallSet(
-            items=dedupe_by_case(items),
+            items=collapsed,
             recalled_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             bank_id=self._config.bank_id,
         )
