@@ -146,19 +146,19 @@ top `semantic` 0.641 against a floor of 0.70 — a margin of 0.059.*
 
 ## Rehearsal record (2026-09-28, live Hindsight Cloud + real LLM)
 
-> **These numbers are PRE-FIX.** They were measured at `integration/phase1` @ `1f29c30`, **before** the
-> `mukul/phase1-fixes` changes merged at `a36bad3` (fact-joining `dedupe_by_case`, failed-approaches and
-> `proxy`/`region` metadata, the `"unknown"`-dropping seam, and the fallback retry). The fixes changed the
-> prompt, the router and the recall seam, so **re-measure on a fresh bank before recording** and replace this
-> table. The Act 3 row's "abstained (contradictory)" is superseded by the post-fix dry runs recorded above,
-> which showed `abstained=False` on a fresh bank.
+> **Historical / pre-fix evidence — retained for comparison, not authoritative.** These numbers were
+> measured at `integration/phase1` @ `1f29c30`, **before** the `mukul/phase1-fixes` changes merged at
+> `a36bad3` (fact-joining `dedupe_by_case`, failed-approaches and `proxy`/`region` metadata, the
+> `"unknown"`-dropping seam, and the fallback retry) and before `semantic_floor` moved to 0.75. The fixes
+> changed the prompt, the router and the recall seam, so these figures no longer describe current
+> behaviour. The **authoritative** post-fix rehearsal is the two-fresh-bank table further below.
 
 | Step | Wall time | Result |
 |---|---|---|
 | Seed 6 cases into a fresh bank | 24–38 s | 6 inserted, 0 skipped, 0 rejected |
 | Act 1 | 27.6 s | abstained; 3 generic hypotheses, 0 citations; retained `d86dff414ff0b105` |
 | Act 2 | 29.7 s | 3 candidates; 1 valid citation; retained `e45829384ccf83fe` |
-| Act 3 | 11.7 s | abstained (contradictory); 0 citations; nothing retained — **pre-fix; see the Act 3 dry runs above** |
+| Act 3 | 11.7 s | abstained (contradictory); 0 citations; nothing retained — **pre-fix figure, see the authoritative table below** |
 | **All three acts** | **~71 s** | every act exited 0 |
 
 A single act is **~12–30 s**, dominated by one structured LLM call (3–7 s, up to ~14 s through
@@ -174,6 +174,14 @@ two separate fresh banks, Acts 1 → 2 → 3 → 4, each checked against this sc
 
 The earlier rehearsal on `a36bad3` (floor 0.70) failed Act 1 and Act 3 on semantic-fallback false positives;
 see `docs/decision-log.md`.
+
+> **Act 3's `abstained` value is not recorded for these two post-fix runs.** The table above records that
+> Act 3 showed *only* the two `orders-api` cases, both `contradictory`, and retained nothing — but it does
+> not state whether the layer also abstained. No repository evidence establishes that value, so it is
+> left unstated rather than guessed. Act 3's narrative above is written accordingly: **the guaranteed
+> behaviour is that conflicting history is surfaced side by side; abstention depends on the score margin.**
+> If you need the exact value for the recording, read it from the session trace
+> (`.debugagent/last-session.json` → `memory.abstention.abstained`) during a fresh-bank run.
 
 **Provider behaviour:** Act 1 was served by the **fallback** (`baseten`) after two primary attempts
 returned `INVALID_OUTPUT` — the CLI showed `fallback_used=True` and the log lines, which is the

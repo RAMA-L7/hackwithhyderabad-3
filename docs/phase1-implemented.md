@@ -100,7 +100,7 @@ recalled cases → the engineer **verifies** each against current evidence and d
 
 | # | Limitation | Effect | Phase 2 item |
 |---|---|---|---|
-| L1 | Thresholds are provisional (`min_final_score 0.05`, `semantic_floor 0.70`, …) | The semantic fallback admits unrelated cases (payments-api for an upload issue; unrelated VLSI memories) | Calibration |
+| L1 | Thresholds are provisional (`min_final_score 0.05`, `semantic_floor 0.75`, …) | The semantic fallback admits by `semantic` score alone when `final` collapses; raising the floor to 0.75 rejected the two measured false positives, but the class of failure is unchanged and remains a calibration parameter, not a validated constant | Calibration |
 | L2 | Contradiction abstention depends on one score margin | Act 3 abstained on 0 of 5 fresh banks; both sides are always shown | Conflict redesign |
 | L3 | Contradictory cases are still citable when memory does not abstain | Hypotheses can cite one side (labelled "past cases disagree") | Citation gating |
 | L4 | Environment metadata keys are fixed (`service, runtime, proxy, region`) | Other domains lose their context (VLSI node, PVT corner, tool, stage) | Domain-neutral metadata |

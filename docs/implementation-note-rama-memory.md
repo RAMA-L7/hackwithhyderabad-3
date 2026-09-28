@@ -52,8 +52,9 @@ one changed the implementation. Each is pinned by a test.
    `semantic` (a raw 0-1 vector cosine) when `final` is below floor, and `semantic` is used only
    as an acceptance signal, never to order results.
 
-   Separated bands observed: relevant `semantic` ~0.78-0.81, irrelevant ~0.52. `semantic_floor`
-   default 0.70 sits between them and is provisional.
+   Separated bands observed: relevant `semantic` ~0.78-0.81, irrelevant ~0.52. The `semantic_floor`
+   default was `0.70`, raised to `0.75` on 2026-09-28 from rehearsal measurements
+   (`DEBUGAGENT_SEMANTIC_FLOOR` overrides it). It is a calibration parameter, not a validated constant.
 
 2. **Recall returns several rows per stored memory.** A bank of 6 retained cases returned 35
    recall rows with differing chunk text and differing scores. `dedupe_by_case()` keeps the
@@ -73,15 +74,15 @@ one changed the implementation. Each is pinned by a test.
 
 ## Two things the thresholds do not do (recorded, not fixed)
 
-- **`semantic_floor = 0.70` does not separate the M0 vague class.** Observed M0 `semantic`: relevant
-  0.867 / 0.884 / 0.802, vague 0.766, irrelevant 0.584 / 0.505 / 0.475. A floor of 0.70 sits between
-  irrelevant and *everything else*, so the vague case clears it and would be classed `relevant`.
-  The vague → `partial` behaviour currently depends on `score_final`. Whether `semantic` can carry
-  that boundary at all is an open calibration question.
-- **Thresholds live in two places.** `min_final_score`, `weak_reference_floor`,
-  `stale_after_days` and `max_tokens` are env-driven through `MemoryConfig`; `semantic_floor` and
-  `contradiction_margin` are constructor-only on `AbstentionPolicy`. A consumer tuning by
-  environment alone cannot reach the fallback or the margin. Worth unifying before calibration.
+- **The `semantic_floor` (now 0.75) still does not separate the M0 vague class.** Observed M0
+  `semantic`: relevant 0.867 / 0.884 / 0.802, vague 0.766, irrelevant 0.584 / 0.505 / 0.475. A floor
+  of 0.75 sits between irrelevant and *everything else*, so the vague case still clears it and would
+  be classed `relevant`. The vague → `partial` behaviour currently depends on `score_final`.
+  Whether `semantic` can carry that boundary at all is an open calibration question.
+- **Thresholds live in two places.** `min_final_score`, `weak_reference_floor`, `stale_after_days`,
+  `max_tokens` and `semantic_floor` are env-driven through `MemoryConfig`; `contradiction_margin` is
+  still constructor-only on `AbstentionPolicy`. A consumer tuning by environment alone cannot reach
+  the margin. Worth unifying before calibration.
 
 ## Consequences for the frozen decisions
 

@@ -70,7 +70,7 @@ These are structural and are not expected to change:
 | Threshold | Provisional default | Where it lives | Status |
 |---|---|---|---|
 | `min_final_score` | `0.05` | `DEBUGAGENT_MIN_FINAL_SCORE` (env) | **Provisional.** Derived from M0 bands on a 5-case bank |
-| `semantic_floor` | `0.70` | `AbstentionPolicy(...)` only — *not* env-driven | **Provisional.** See C2.3 caveat |
+| `semantic_floor` | `0.75` | `DEBUGAGENT_SEMANTIC_FLOOR` (env) | **Provisional.** Raised from `0.70` on 2026-09-28 from measured rehearsal scores (unrelated 0.7016/0.7084 rejected, genuine 0.78 kept). A calibration parameter, not a validated constant |
 | `weak_reference_floor` | `0.6` | `DEBUGAGENT_WEAK_REFERENCE_FLOOR` (env) | **Provisional** |
 | `contradiction_margin` | `0.2` | `AbstentionPolicy(...)` only — *not* env-driven | **Provisional.** No margin experiment has been run |
 | `stale_after_days` | `365` | `DEBUGAGENT_STALE_AFTER_DAYS` (env) | **Provisional policy choice, not a measurement** |
@@ -85,8 +85,8 @@ Calibration is a scheduled task, not a decision. It should record, for each labe
 (relevant / vague / irrelevant), the observed `final` and `semantic` scores, and set thresholds to
 separate the classes on the final seed bank.
 
-**Known gap to resolve during calibration:** the current `semantic_floor = 0.70` separates
-*irrelevant* from *not-irrelevant*, but it does **not** reproduce the M0 vague/relevant split.
+**Known gap, still open:** the current `semantic_floor = 0.75` separates *irrelevant* from
+*not-irrelevant*, but it still does **not** reproduce the M0 vague/relevant split.
 Observed M0 `semantic` scores:
 
 | Class | M0 observed `semantic` |
@@ -95,7 +95,7 @@ Observed M0 `semantic` scores:
 | vague (H-4E) | 0.766 |
 | irrelevant (H-4C and others) | 0.584 / 0.505 / 0.475 |
 
-A floor of 0.70 would admit the M0 vague case (0.766) as `relevant`. The vague → `partial`
+A floor of 0.75 still admits the M0 vague case (0.766) as `relevant`. The vague → `partial`
 behaviour therefore currently depends on `score_final`, not on the semantic fallback. Whether
 `semantic` can carry the vague/relevant boundary at all is an open calibration question; if it
 cannot, the vague class needs a different signal, and that is a Phase 1 risk to record rather than

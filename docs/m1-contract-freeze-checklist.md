@@ -65,8 +65,8 @@ Nothing here is frozen yet unless marked otherwise.
 - [x] Contradictions surfaced, never silently resolved; keyed on (service, `root_cause_key`)
 - [!] Threshold values are **provisional defaults**, not calibrated. Not to be narrated as
       universal truths. See `m1-freeze-decisions.md` §C2.2–C2.3
-- [!] `semantic_floor = 0.70` does **not** separate the M0 vague class (0.766) from relevant
-      (0.80–0.88). Open calibration question, recorded not hidden
+  - [!] `semantic_floor = 0.75` does **not** separate the M0 vague class (0.766) from relevant
+        (0.80–0.88). Open calibration question, recorded not hidden
 - [x] Irrelevant candidates are excluded from the proposal but retained in the trace log
 
 ## 8. Retention ownership
