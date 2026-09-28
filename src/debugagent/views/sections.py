@@ -1,4 +1,4 @@
-"""Plain-text rendering of the four trust sections: MEMORY / EVIDENCE / PROPOSAL / DECISION (C4).
+"""Plain-text views of the trust sections: MEMORY / EVIDENCE / PROPOSAL / DECISION (C4), plus RETENTION.
 
 Rules held here: scores are never shown; recalled environments are shown verbatim as past
 conditions; a hypothesis is never styled as verified.
@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import textwrap
 
-from debugagent.pipeline.hypothesize import Proposal
-from debugagent.pipeline.recall_match import MemoryContext, compare_environment
-from debugagent.pipeline.types import Evidence, Hypothesis, VerificationResult
+from debugagent.domain.investigation import MemoryContext, Proposal, Session, compare_environment
+from debugagent.domain.models import Evidence, Hypothesis, VerificationResult
 
 WIDTH = 78
 CLASS_LABEL = {"relevant": "relevant", "partial": "partial · weak reference", "contradictory": "contradictory",
@@ -96,3 +95,18 @@ def render_retention(retention: dict | None, reason: str = "") -> str:
     if retention.get("memory_case_id"):
         lines.append(f"memory id: {retention['memory_case_id']}")
     return section("RETENTION", "memory write", lines)
+
+
+def render_stage(stage: str, session: Session) -> str:
+    """The section for a finished stage (EngineerPort.report)."""
+    if stage == "memory":
+        return render_memory(session.memory, session.case.environment)
+    if stage == "evidence":
+        return render_evidence(session.evidence)
+    if stage == "proposal":
+        return render_proposal(session.proposal)
+    if stage == "decision":
+        return render_decision(session.proposal.hypotheses, session.verifications)
+    if stage == "retention":
+        return render_retention(session.retention, "" if session.retention else "the engineer did not report a resolution")
+    raise ValueError(f"unknown stage {stage!r}")

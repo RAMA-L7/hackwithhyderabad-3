@@ -6,16 +6,16 @@ import unittest
 
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import ABSTAINED_VIEW, CONTRADICTORY_VIEW, PARTIAL_VIEW, RELEVANT_VIEW, FakeMemoryPort
-from debugagent.pipeline.memory_port import MemoryFailure, check_retention, check_view
-from debugagent.pipeline.types import (
+from debugagent.domain.errors import MemoryFailure, SchemaError
+from debugagent.domain.models import (
     DebugInput,
     Evidence,
     Hypothesis,
     NormalizedDebugCase,
     Resolution,
-    SchemaError,
     VerificationResult,
 )
+from debugagent.ports.memory_port import check_retention, check_view
 
 NOW = "2026-09-28T06:00:00+00:00"
 

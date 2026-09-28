@@ -7,25 +7,38 @@ import unittest
 
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import FakeLLM, FakeMemoryPort, candidate, hyp, view
-from debugagent.pipeline.evidence import EvidenceError, add_facts, build_evidence
-from debugagent.pipeline.hypothesize import generate_hypotheses
-from debugagent.pipeline.normalize import normalize
-from debugagent.pipeline.recall_match import recall
-from debugagent.pipeline.types import DebugInput
-from debugagent.pipeline.verify import EngineerDecision, VerificationError, build_resolution, evidence_gaps, verify
+from debugagent.domain.errors import EvidenceError, VerificationError
+from debugagent.domain.investigation import EngineerDecision
+from debugagent.domain.models import DebugInput
+from debugagent.services.evidence_service import EvidenceService
+from debugagent.services.hypothesis_service import HypothesisService
+from debugagent.services.normalization_service import NormalizationService
+from debugagent.services.recall_service import RecallService
+from debugagent.services.verification_service import VerificationService
+
+normalize = NormalizationService().normalize
+EVIDENCE = EvidenceService()
+VERIFY = VerificationService()
+verify, evidence_gaps, build_resolution = VERIFY.verify, VERIFY.gaps, VERIFY.build_resolution
+add_facts = EVIDENCE.add_facts
+
+
+def build_evidence(case, captured_at=None):
+    return (EvidenceService(clock=lambda: captured_at) if captured_at else EVIDENCE).build(case)
+
 
 CASE = normalize(DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24\nsmall uploads succeed"))
 REL = "3f9a1c07b2e4d815"
 PAST_ENV = {"service": "media-uploader", "proxy": "nginx-1.25", "runtime": "node20"}
-MEMORY = recall(FakeMemoryPort(view([candidate(REL, environment=PAST_ENV)])), CASE)
-PROPOSAL = generate_hypotheses(CASE, MEMORY, FakeLLM({"hypotheses": [hyp(cites=[REL]), hyp(text="app-side limit")]}))
+MEMORY = RecallService(FakeMemoryPort(view([candidate(REL, environment=PAST_ENV)]))).recall(CASE)
+PROPOSAL = HypothesisService(FakeLLM({"hypotheses": [hyp(cites=[REL]), hyp(text="app-side limit")]})).generate(CASE, MEMORY)
 H1, H2 = PROPOSAL.hypotheses
 ACCEPT = EngineerDecision("accept", "supported", True, "matches")
 
 
 class EvidenceTests(unittest.TestCase):
     def test_built_from_case_only(self):
-        self.assertEqual(list(inspect.signature(build_evidence).parameters)[:1], ["case"])
+        self.assertEqual(list(inspect.signature(EvidenceService.build).parameters), ["self", "case"])
         evidence = build_evidence(CASE, captured_at="2026-09-28T09:00:00+00:00")
         self.assertEqual(evidence.known()["service"], "photo-api")
         self.assertEqual(evidence.unknown_fields, ["runtime", "region"])

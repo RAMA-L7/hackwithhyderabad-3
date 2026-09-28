@@ -5,8 +5,11 @@ from __future__ import annotations
 import unittest
 
 import loop_support  # noqa: F401  (path wiring)
-from debugagent.pipeline.normalize import InputError, NormalizationError, TAXONOMY_KEYS, normalize
-from debugagent.pipeline.types import DebugInput
+from debugagent.domain.errors import InputError, NormalizationError
+from debugagent.domain.models import DebugInput
+from debugagent.services.normalization_service import TAXONOMY_KEYS, NormalizationService
+
+normalize = NormalizationService().normalize
 
 ACT2 = DebugInput(
     description=("media-uploader resets connections on uploads over 2 MB behind nginx.\n"

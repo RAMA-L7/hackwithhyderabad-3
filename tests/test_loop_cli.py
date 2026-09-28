@@ -11,7 +11,7 @@ from pathlib import Path
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import RELEVANT_VIEW, FakeLLM, FakeMemoryPort, hyp
 from debugagent.cli import main
-from debugagent.pipeline.memory_port import MemoryFailure
+from debugagent.domain.errors import MemoryFailure
 
 REL = "3f9a1c07b2e4d815"
 SCRIPT = [
@@ -46,8 +46,9 @@ class CliTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_cli(self, argv, lines, port=None, llm=None):
+        """`port` is injected as the memory port."""
         out, err = io.StringIO(), io.StringIO()
-        code = main(argv, ask=feed(lines), out=out, err=err, port=port, state_dir=self.state,
+        code = main(argv, ask=feed(lines), out=out, err=err, memory=port, state_dir=self.state,
                     llm=llm or FakeLLM({"hypotheses": [hyp(cites=[REL]), hyp(text="app-side limit")]}))
         return code, out.getvalue(), err.getvalue()
 

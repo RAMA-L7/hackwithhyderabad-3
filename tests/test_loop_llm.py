@@ -6,16 +6,10 @@ import json
 import unittest
 
 import loop_support  # noqa: F401  (path wiring)
-from debugagent.llm.router import (
-    LLMAuthError,
-    LLMConfigError,
-    LLMRouter,
-    LLMUnavailable,
-    Route,
-    StructuredOutputError,
-    extract_json,
-    load_routes,
-)
+from debugagent.adapters.llm.response import extract_json
+from debugagent.adapters.llm.router import LLMRouter
+from debugagent.adapters.llm.settings import Route, load_routes
+from debugagent.domain.errors import LLMAuthError, LLMConfigError, LLMUnavailable, StructuredOutputError
 
 SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["hypotheses"],
@@ -157,10 +151,10 @@ class InvalidOutputTests(unittest.TestCase):
         self.assertFalse(result.fallback_used)
 
     def test_invalid_everywhere_raises_never_returns_text(self):
-        t = FakeTransport([completion("{}"), completion("{}")], [completion("prose answer")])
+        t = FakeTransport([completion("{}"), completion("{}")], [completion("prose answer"), completion("[1]")])
         with self.assertRaises(StructuredOutputError) as ctx:
             router(t).complete_structured("p", schema=SCHEMA)
-        self.assertEqual(len(ctx.exception.attempts), 3)
+        self.assertEqual(len(ctx.exception.attempts), 4)
 
     def test_caller_check_counts_as_invalid(self):
         bad = {"hypotheses": ["cites seed-999"]}
@@ -169,6 +163,13 @@ class InvalidOutputTests(unittest.TestCase):
         result = router(t).complete_structured("p", schema=SCHEMA, check=check)
         self.assertEqual(result.data, GOOD)
         self.assertIn("invented id", result.attempts[0]["detail"])
+
+    def test_fallback_also_retries_invalid_output_once(self):  # flow C, 2026-09-28: Space Bunny added `rank`
+        bad = {"hypotheses": ["x"], "rank": 1}
+        t = FakeTransport([TimeoutError()], [completion(json.dumps(bad)), completion(json.dumps(GOOD))])
+        result = router(t).complete_structured("p", schema=SCHEMA)
+        self.assertTrue(result.fallback_used)
+        self.assertEqual([a["error_class"] for a in result.attempts], ["TIMEOUT", "INVALID_OUTPUT", None])
 
     def test_retries_configurable_to_zero(self):
         t = FakeTransport([completion("nope")], [completion(json.dumps(GOOD))])
@@ -198,6 +199,17 @@ class ParserTests(unittest.TestCase):
 
     def test_truncation_is_invalid_even_if_parseable(self):
         self.assertEqual(extract_json(self.body(json.dumps(GOOD), finish="length"))[1], "truncated at max_tokens")
+
+    def test_bare_array_wrapped_only_when_schema_has_one_array_key(self):
+        body = self.body('["proxy body limit"]')
+        self.assertEqual(extract_json(body, SCHEMA)[0], {"hypotheses": ["proxy body limit"]})
+        two_keys = {"type": "object", "required": ["a", "b"], "properties": {"a": {"type": "array"}, "b": {"type": "array"}}}
+        self.assertEqual(extract_json(body, two_keys)[1], "JSON root is not an object")
+
+    def test_wrapped_array_is_still_validated(self):
+        t = FakeTransport([completion("[1, 2]"), completion("[3]")], [completion(json.dumps(GOOD))])
+        result = router(t).complete_structured("p", schema=SCHEMA)
+        self.assertTrue(result.fallback_used, "wrapped content that fails the schema is still invalid")
 
     def test_prose_and_non_object_rejected(self):
         self.assertEqual(extract_json(self.body('Here: {"a": 1}'))[1], "content is not JSON")

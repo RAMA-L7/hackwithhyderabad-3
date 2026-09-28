@@ -1,4 +1,4 @@
-"""Mukul-side Phase 1 types (m1-contract.md section 3, on rama-m0 @ 7254fc3).
+"""Contract models (m1-contract.md section 3, on rama-m0 @ 7254fc3).
 
 Names match the contract so they can be promoted into the shared schemas.py at MK9.
 Validation fails closed: from_dict collects every error and raises SchemaError; nothing is coerced.
@@ -15,19 +15,13 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from debugagent.domain.errors import SchemaError
+
 HYPOTHESIS_RELEVANCE_STATES = ("supported", "conditional", "weak-reference", "generic")
 VERIFICATION_STATUSES = ("supported", "contradicted", "insufficient_evidence")
 ENGINEER_DECISIONS = ("accept", "modify", "reject")
 OUTCOME_CLASSES = ("resolved", "workaround", "escalated", "deferred")
 HYPOTHESIS_REF_RE = re.compile(r"^H[1-9][0-9]*$")
-
-
-class SchemaError(ValueError):
-    """A value does not satisfy the contract."""
-
-    def __init__(self, errors: list[str]):
-        super().__init__("; ".join(errors))
-        self.errors = errors
 
 
 class _Check:

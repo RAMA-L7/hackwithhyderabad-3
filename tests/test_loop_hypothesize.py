@@ -6,18 +6,22 @@ import unittest
 
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import ABSTAINED_VIEW, CONTRADICTORY_VIEW, PARTIAL_VIEW, RELEVANT_VIEW, FakeLLM, FakeMemoryPort, candidate, hyp, view
-from debugagent.llm import StructuredOutputError
-from debugagent.pipeline.hypothesize import build_prompt, generate_hypotheses
-from debugagent.pipeline.normalize import normalize
-from debugagent.pipeline.recall_match import recall
-from debugagent.pipeline.types import DebugInput
+from debugagent.domain.errors import StructuredOutputError
+from debugagent.domain.models import DebugInput
+from debugagent.services.hypothesis_service import HypothesisService, build_prompt
+from debugagent.services.normalization_service import NormalizationService
+from debugagent.services.recall_service import RecallService
 
-CASE = normalize(DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24"))
+CASE = NormalizationService().normalize(DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24"))
 REL = "3f9a1c07b2e4d815"
 
 
 def memory(v):
-    return recall(FakeMemoryPort(v), CASE)
+    return RecallService(FakeMemoryPort(v)).recall(CASE)
+
+
+def generate_hypotheses(case, mem, llm):
+    return HypothesisService(llm).generate(case, mem)
 
 
 class CitationTests(unittest.TestCase):

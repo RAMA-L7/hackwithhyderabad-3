@@ -37,15 +37,29 @@ Rama              MemoryPort.retain(case)   (called only after engineer_decision
 **Mukul-owned paths (only these are created on `mukul-loop`):**
 
 ```
-src/debugagent/llm/__init__.py, router.py
-src/debugagent/pipeline/__init__.py, types.py, memory_port.py, normalize.py,
-                        recall_match.py, hypothesize.py, evidence.py, verify.py, investigate.py, render.py
-src/debugagent/cli.py
+src/debugagent/cli.py, app.py, logging_setup.py
+src/debugagent/{controllers,services,domain,ports,views,adapters}/
+tests/loop_support.py, tests/test_loop_*.py, tests/live_flows.py
 demo/offline-memory.json  (pre-MK9 stand-in memory for rehearsal)
-tests/loop_support.py, tests/test_loop_*.py
 mk0/probe.py, mk0/results/
 docs/phase1-mukul-plan.md, docs/phase1-mukul-m0-plan.md
 ```
+
+**Code structure (layered, 2026-09-28).** Dependencies point inwards only; `tests/test_loop_architecture.py`
+fails the build if a layer imports what it may not.
+
+| Layer | Holds | May import |
+|---|---|---|
+| `domain/` | `models.py` (contract types), `investigation.py` (MemoryContext, Proposal, EngineerDecision, Session), `errors.py` (one hierarchy) | nothing |
+| `ports/` | `memory_port.py` (+ boundary checks), `llm_port.py`, `engineer_port.py` | domain |
+| `services/` | normalization, recall, evidence, hypothesis, verification, retention, investigation | domain, ports, logging |
+| `adapters/` | `llm/` (settings, transport, response, router), `offline_memory.py`, `session_store.py`, `env_file.py`; MK9 adds `hindsight_memory.py` | domain, ports, logging |
+| `views/` | `sections.py`: MEMORY / EVIDENCE / PROPOSAL / DECISION / RETENTION | domain |
+| `controllers/` | `terminal_engineer.py` (implements the engineer port), `debug_controller.py`, `inspect_controller.py` | domain, ports, services, views, adapters |
+| `app.py`, `cli.py` | composition root and entry point: the only place adapters are wired to services | anything |
+
+`logging_setup.get_logger(__name__)` everywhere; only the CLI calls `configure_logging()`. Every log line
+carries `session=<id>`.
 
 **Never created or edited on this branch** (they exist on `rama-m0`; touching them causes merge
 conflicts): `src/debugagent/__init__.py`, `config.py`, `schemas.py`, `memory/`, `seeds/`,
@@ -64,7 +78,7 @@ conflicts): `src/debugagent/__init__.py`, `config.py`, `schemas.py`, `memory/`, 
 
 ## 2. Memory port (the pinned interface)
 
-Defined on this branch in `pipeline/memory_port.py`. Plain dicts, shaped exactly like the
+Defined on this branch in `ports/memory_port.py`. Plain dicts, shaped exactly like the
 `to_dict()` output of Rama's dataclasses at `rama-m0` `7254fc3`, so the MK9 adapter is a
 thin wrapper.
 
@@ -260,9 +274,10 @@ web UI · second domain · auto-retention · new dependencies.
 ## 9. How to run (before MK9)
 
 ```
-PYTHONPATH=src python3 -m unittest discover -s tests             # 104 offline tests
+PYTHONPATH=src python3 -m unittest discover -s tests             # 112 offline tests
 PYTHONPATH=src python3 -m debugagent.cli debug                   # live LLM + offline memory file
 PYTHONPATH=src python3 -m debugagent.cli inspect                 # trace of the last session
+PYTHONPATH=src python3 tests/live_flows.py                       # 6 live end-to-end flows (~6 LLM calls)
 ```
 
 `debug` reads `.env.live`, recalls from `demo/offline-memory.json` (queries containing "upload" get
@@ -273,12 +288,28 @@ the relevant view; anything else gets the abstained view), and writes retained c
 
 1. Rama confirms §5 (or the proposals stand), pins `hindsight-client==0.10.1`, shares Cloud URL/key.
 2. `git merge origin/rama-m0` into `mukul-loop` (verified clean; 139 tests pass together).
-3. Add `pipeline/memory_adapter.py`: `recall_and_classify` = `store.recall()` → `classify_candidates()` →
+3. Add `adapters/hindsight_memory.py` (implements `MemoryPort`): `recall_and_classify` = `store.recall()` → `classify_candidates()` →
    `to_dict()` + join `text`/`outcome` by `case_id` (Q8); `retain` = `MemoryCase.from_dict()` → `store.retain()`
    → `to_dict()`; map `MemoryUnavailable`/`MemoryAuthError`/`MemorySchemaError` → `MemoryFailure` kinds.
    Test it with the seam check already proven in the trial merge.
-4. `cli.make_port`: `--memory hindsight` builds the adapter; make it the default.
+4. `app.build_memory`: `--memory hindsight` builds the adapter; make it `DEFAULT_MEMORY`. The architecture test's `RAMA_MODULES` rule gets one exception: `adapters/hindsight_memory.py` may import `debugagent.memory` and `debugagent.schemas`.
 5. `pyproject.toml`: console entry point `debugagent = "debugagent.cli:main"`; `.env.example`: provider swap +
    `LLM_{PRIMARY,FALLBACK}_TIMEOUT_S`.
 6. Change-log entries for MK0–MK9.
 7. Live: Act 1 → retain → Act 2 recalls it; re-run `mk0/probe.py --only D1,D2,S2,X3`.
+
+## 11. Live flow test (`tests/live_flows.py`)
+
+Real CLI, real providers, offline memory. Last run 2026-09-28: **all 6 flows pass** (30 checks).
+
+| Flow | Checks |
+|---|---|
+| A · Act 1, no matching history | memory abstains; every hypothesis generic, no citations; case retained; no unknown env stored |
+| B · Act 2, memory-backed with an evidence gap | relevant case + original environment + differences shown; memory-backed hypothesis cites it; current system described correctly; **insufficient evidence** despite the strong match; failed approach stored; `inspect` trace |
+| C · primary down | primary failure logged; fallback served with `fallback_used=True`; case retained |
+| D · not resolved | nothing retained |
+| E · memory unavailable | one-line error; never "no memory" |
+| F · bad API key | one-line auth error; no failover; nothing retained |
+
+First run failed flow C (fallback added a `rank` field / returned a bare list); fixed as recorded in the decision log.
+Re-run on demo morning.

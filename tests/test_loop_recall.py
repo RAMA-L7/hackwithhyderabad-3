@@ -6,13 +6,19 @@ import unittest
 
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import ABSTAINED_VIEW, CONTRADICTORY_VIEW, PARTIAL_VIEW, RELEVANT_VIEW, FakeMemoryPort
-from debugagent.pipeline.memory_port import MemoryFailure
-from debugagent.pipeline.normalize import normalize
-from debugagent.pipeline.recall_match import compare_environment, recall, recall_query
-from debugagent.pipeline.render import render_memory
-from debugagent.pipeline.types import DebugInput
+from debugagent.domain.errors import MemoryFailure
+from debugagent.domain.investigation import compare_environment
+from debugagent.domain.models import DebugInput
+from debugagent.services.normalization_service import NormalizationService
+from debugagent.services.recall_service import RecallService, recall_query
+from debugagent.views.sections import render_memory
 
-CASE = normalize(DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24\nsmall uploads succeed"))
+
+def recall(port, case):
+    return RecallService(port).recall(case)
+
+
+CASE = NormalizationService().normalize(DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24\nsmall uploads succeed"))
 
 
 class RecallTests(unittest.TestCase):

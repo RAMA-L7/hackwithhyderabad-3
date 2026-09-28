@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from debugagent.pipeline.memory_port import MemoryFailure  # noqa: E402
+from debugagent.domain.errors import MemoryFailure  # noqa: E402
 
 
 def candidate(case_id, relevance_class="relevant", *, environment=None, conflicts_with=None,
@@ -94,7 +94,9 @@ class FakeLLM:
         self.prompts: list[str] = []
 
     def complete_structured(self, prompt, *, schema, name="response", check=None):
-        from debugagent.llm.router import StructuredOutputError, StructuredResult, validate
+        from debugagent.adapters.llm.response import validate
+        from debugagent.domain.errors import StructuredOutputError
+        from debugagent.ports.llm_port import StructuredResult
 
         self.prompts.append(prompt)
         attempts = []
@@ -109,20 +111,20 @@ class FakeLLM:
 
 
 class ScriptedEngineer:
-    """Engineer protocol with fixed answers; records everything shown."""
+    """EngineerPort with fixed answers; records every reported stage."""
 
     def __init__(self, facts=None, decisions=None, resolution=None):
-        from debugagent.pipeline.verify import EngineerDecision
+        from debugagent.domain.investigation import EngineerDecision
 
         self.facts = facts or {}
         self.decisions = decisions if decisions is not None else {}
         self.default = EngineerDecision("accept", "supported", True, "looks right")
         self.resolution = resolution
-        self.shown: list[str] = []
+        self.stages: list[str] = []
         self.asked: list[tuple] = []
 
-    def show(self, text):
-        self.shown.append(text)
+    def report(self, stage, session):
+        self.stages.append(stage)
 
     def current_facts(self, evidence):
         return dict(self.facts)

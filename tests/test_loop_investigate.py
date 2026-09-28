@@ -6,11 +6,14 @@ import unittest
 
 import loop_support  # noqa: F401  (path wiring)
 from loop_support import ABSTAINED_VIEW, RELEVANT_VIEW, RESOLVED, FakeLLM, FakeMemoryPort, ScriptedEngineer, hyp
-from debugagent.llm import StructuredOutputError
-from debugagent.pipeline.investigate import investigate
-from debugagent.pipeline.memory_port import MemoryFailure
-from debugagent.pipeline.types import DebugInput
-from debugagent.pipeline.verify import VerificationError
+from debugagent.app import build_investigation
+from debugagent.domain.errors import MemoryFailure, StructuredOutputError, VerificationError
+from debugagent.domain.models import DebugInput
+
+
+def investigate(raw, port, llm, engineer, **kwargs):
+    return build_investigation(port, llm).run(raw, engineer, **kwargs)
+
 
 RAW = DebugInput("photo-api resets uploads over 2 MB\nservice=photo-api proxy=nginx-1.24", ["20/20 2.5MB uploads fail"])
 REL = "3f9a1c07b2e4d815"
@@ -38,8 +41,7 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(case["failed_approaches"], [{"approach": "raised client timeout", "why_failed": "proxy closed first"}])
         self.assertTrue(case["investigation_trace"])
         self.assertEqual(session.retention["memory_case_id"], "fake-fact-1")
-        titles = [t.split("\n")[1].split()[0] for t in engineer.shown]
-        self.assertEqual(titles, ["MEMORY", "EVIDENCE", "PROPOSAL", "DECISION", "RETENTION"])
+        self.assertEqual(engineer.stages, ["memory", "evidence", "proposal", "decision", "retention"])
         self.assertEqual(steps, sorted(steps))
 
     def test_unknown_env_values_never_stored(self):
@@ -72,6 +74,18 @@ class LoopTests(unittest.TestCase):
         port = FakeMemoryPort(RELEVANT_VIEW)
         with self.assertRaises(StructuredOutputError):
             investigate(RAW, port, FakeLLM({"hypotheses": []}), ScriptedEngineer(resolution=RESOLVED))
+        self.assertEqual(port.retained, [])
+
+
+
+class RetentionGuardTests(unittest.TestCase):
+    def test_retention_service_refuses_an_undecided_session(self):
+        from debugagent.domain.investigation import Session
+        from debugagent.services.retention_service import RetentionService
+
+        port = FakeMemoryPort()
+        with self.assertRaises(ValueError):
+            RetentionService(port).retain(Session("s", RAW))
         self.assertEqual(port.retained, [])
 
 
