@@ -5,11 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "debugagent"
 version = "0.1.0"
-description = "Memory-driven engineering investigation agent (Phase 1 memory layer)"
+description = "Memory-driven engineering investigation agent (Phase 1)"
 requires-python = ">=3.10"
 dependencies = [
     "hindsight-client>=0.10",
 ]
+
+[project.scripts]
+debugagent = "debugagent.cli:main"
 
 [project.optional-dependencies]
 dev = []

@@ -1,9 +1,16 @@
 # Handoff: Rama's Memory Layer → Mukul
 
 **From:** Rama · **To:** Mukul · **Date:** 2026-09-28
-**Code:** `rama-m0` @ `6f60af1` (Rama side complete: 78 tests, 7 live against Hindsight Cloud)
+**Code:** `integration/phase1` (Rama's memory layer + Mukul's pipeline, merged; MK9 complete)
 **Read alongside:** `docs/m1-contract.md` (§4 rules, §5 limitations), `docs/m1-freeze-decisions.md` (§C2),
 `docs/handoff-mukul-memory.md` is normative for *your* consumption of memory.
+
+> **Status note (2026-09-28, MK9).** This handoff has been actioned. `pipeline/memory_adapter.py`
+> implements `HindsightMemoryPort` against your `MemoryPort` seam, `--memory hindsight` is the CLI
+> default, and the full loop runs end to end against Hindsight Cloud. Your Q1, Q3, Q4, Q5, Q6, Q7 and
+> Q8 proposals were all accepted as written, with no change to your code — see `docs/decision-log.md`
+> for the answers and for three defects that only appeared once the two sides were joined. The
+> interface below is unchanged, so nothing in this document needs revising.
 
 ---
 

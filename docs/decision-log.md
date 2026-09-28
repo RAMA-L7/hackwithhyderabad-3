@@ -230,3 +230,55 @@ which adds rows there. Evidence: `docs/phase1-mukul-m0-plan.md` §6 and `docs/ph
 | Social posts drafted | | | |
 | GitHub repo polished | | | |
 | Submission complete | 2026-09-29 | Both | Not started |
+---
+
+## 2026-09-28 — MK9 integration: Rama's answers to Mukul's Q0–Q8, and the joint merge
+
+Recorded on `integration/phase1` after merging `rama-m0` into `mukul-loop`. No conflicts.
+
+| # | Question | Rama's answer | Effect |
+|---|---|---|---|
+| Q0 | Branch independence + memory port | **Adopted as designed.** The two sides never touched each other's code until this merge, and the port was the only seam. No change needed | none |
+| Q1 | `Resolution` lacks `outcome`, which `MemoryCase` requires | **Adopt.** The contract's `Resolution` (§3.8) has no `outcome` field, so `MemoryCase.outcome` had no source. Adding it is the smallest change; the alternative was inventing an outcome from the session | `Resolution.outcome` stays; no contract change needed, it is already what the code does |
+| Q3 | `Hypothesis.relevance_state = supported` reads like verification | **Adopt the mapping and the label.** relevant→supported, partial→weak-reference, contradictory→conditional, none→generic, derived in code from the cited classes; the CLI renders `supported` as "memory-backed", never with verification styling. This is the right resolution of a real contract ambiguity: the value is required to exist by §3.6, so the fix is in how it is labelled and derived, not in removing it | none; matches the shipped code |
+| Q4 | Nothing defines what `verify()` checks | **Adopt.** `insufficient_evidence` when current Evidence has no known items, or lacks an environment key a cited case depends on; otherwise the engineer marks supported/contradicted against EVIDENCE. This is the mechanism that stops a recalled field satisfying a precondition | none; matches the shipped code |
+| Q5 | `hypothesis_ref` format | **Adopt `H1`, `H2`, … per session.** The contract only requires a string | none |
+| Q6 | One interactive `debug` + `inspect` instead of separate `verify` / `resolve` commands | **Adopt**, with the doc obligation C4 already carried. Command names were explicitly free to change "since no integration depends on them" | `docs/phase1-demo-scenario.md` and the DoD updated to match (Stage 20) |
+| Q7 | Abstained **and** contradictory | **Adopt.** MEMORY shows both sides; PROPOSAL stays generic. Verified live | none |
+| Q8 | `MatchCandidate` has no `text` or `outcome` | **Adopt.** The adapter joins both from the recalled case by `case_id`. **No change to Rama's code** was needed | implemented in `pipeline/memory_adapter.py` |
+
+### Branch state correction
+
+`origin/mukul-loop` did **not** contain the memory-layer commits; `6f60af1` and `7254fc3` were not
+ancestors. This was deliberate, not an oversight: `docs/phase1-mukul-plan.md` §1 states the branch is
+independent of `rama-m0` and that the two sides "meet only through the memory port", joined in one
+integration step. That step is MK9 and is this commit's merge.
+
+### Two defects found by running the integrated system (not by any test)
+
+Both were found only after the two sides were joined and run against a **seeded** bank. Neither is
+visible in a unit test with a canned view.
+
+1. **A conflict was reported for a service nobody was debugging.** A `media-uploader` question still
+   recalled two `orders-api` cases and reported them as contradicting each other. A disagreement
+   about another service is not actionable. Contradictions are now grouped only for services the
+   engineer actually named in the query; when the query names none, behaviour is unchanged.
+2. **Re-investigating a resolved issue made memory abstain.** Retaining a case stores a *paraphrase*
+   of a seed's root cause, so the two derived `root_cause_key` values differ and looked like a
+   disagreement. This is contract limitation L3 becoming user-visible on the second run of the demo.
+   `contradiction_text_overlap` (provisional, 0.5) now treats near-identical root causes as the same
+   cause. A curated taxonomy remains the real fix; this is the smallest reversible step towards it.
+
+### One defect found in Mukul's CLI
+
+`render.py` draws its section rules with `━` (U+2501), which a cp1252 console — the Windows default —
+cannot encode. The first render raised `UnicodeEncodeError` and the session died. Fixed at the stream
+level in `cli.py` (`_use_utf8`), so the rendering design is unchanged and the CLI also runs on a
+non-UTF-8 terminal. **This would have crashed the demo recording on the demo machine.**
+
+### C2 position (unchanged, restated)
+
+The abstention policy *shape* is frozen; **no threshold value is frozen**. `min_final_score 0.05`,
+`semantic_floor 0.70`, `weak_reference_floor 0.6`, `contradiction_margin 0.2` and the new
+`contradiction_text_overlap 0.5` are provisional defaults from a six-case bank. Calibration against
+the final seed bank is still outstanding, and the demo script now says so explicitly.

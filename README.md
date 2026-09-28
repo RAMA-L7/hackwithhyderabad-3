@@ -83,6 +83,36 @@ Background: To be documented after discussion
 
 ***
 
+## Run the Phase 1 agent
+
+The pipeline is integrated on `integration/phase1`. It is stdlib-only apart from `hindsight-client`.
+
+```bash
+# 1. credentials: HINDSIGHT_URL / HINDSIGHT_API_KEY / HINDSIGHT_BANK_ID, and the LLM_* pair
+cp .env.example .env          # then fill it in; .env is git-ignored
+
+# 2. seed the bank once (idempotent - a second run inserts nothing)
+PYTHONPATH=src python -c "from debugagent.config import load_memory_config; \
+from debugagent.memory.hindsight_store import HindsightMemoryStore; \
+from debugagent.seeds.loader import load_seed_cases; \
+print(load_seed_cases(HindsightMemoryStore(load_memory_config())).to_dict())"
+
+# 3. investigate one issue; renders MEMORY / EVIDENCE / PROPOSAL / DECISION
+PYTHONPATH=src python -m debugagent.cli debug --env .env
+
+# 4. print the trace of the last session
+PYTHONPATH=src python -m debugagent.cli inspect
+```
+
+`--memory hindsight` is the default. `--memory offline:demo/offline-memory.json` runs the same loop
+with no network, for rehearsing the flow before recording.
+
+Tests: `PYTHONPATH=src python -m unittest discover -s tests`. The Hindsight tests skip unless
+`HINDSIGHT_URL` is set; with it set, 9 of them run against the real service.
+
+The trust rule the CLI enforces: **MEMORY informs · EVIDENCE verifies · AGENT proposes · ENGINEER
+decides.** A recalled case is never evidence and never satisfies a verification requirement.
+
 ## Documentation Index
 
 | Document                                                         | Purpose                                               |

@@ -28,6 +28,7 @@ class AbstentionPolicy:
     weak_reference_floor: float = 0.6
     stale_after_days: int = 365
     contradiction_margin: float = 0.2
+    contradiction_text_overlap: float = 0.5
 
     def to_dict(self) -> dict:
         return {
@@ -36,7 +37,23 @@ class AbstentionPolicy:
             "weak_reference_floor": self.weak_reference_floor,
             "stale_after_days": self.stale_after_days,
             "contradiction_margin": self.contradiction_margin,
+            "contradiction_text_overlap": self.contradiction_text_overlap,
         }
+
+
+def same_cause(left: str, right: str, threshold: float) -> bool:
+    """True when two derived root-cause keys are the same cause written differently.
+
+    `root_cause_key` is derived text (contract limitation L2), so a paraphrase produces a different
+    key. Measured live on 2026-09-28: re-investigating an issue the engineer had already resolved
+    stored a paraphrase of the seed, and the two were then reported as contradicting each other,
+    which abstained on a correct match. Two root causes that share at least `threshold` of their
+    content tokens are treated as the same cause. Provisional, like every threshold here.
+    """
+    left_tokens, right_tokens = tokenize(left), tokenize(right)
+    if not left_tokens or not right_tokens:
+        return False
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens) >= threshold
 
 
 def effective_score(item: RecallResult, policy: AbstentionPolicy) -> tuple[float, str]:
@@ -102,28 +119,71 @@ def _service(item: RecallResult) -> str:
     return (item.environment or {}).get("service", "unknown")
 
 
+def _focused_services(items: list[RecallResult], normalized_query: str) -> set[str] | None:
+    """Services the engineer actually named in this query.
+
+    A disagreement about a service you are not debugging is not actionable, and surfacing it as a
+    conflict is misleading: measured live, a media-uploader question still recalled two orders-api
+    cases and reported them as contradicting each other. When the query names at least one recalled
+    service, contradictions are reported only for those services. When it names none, nothing is
+    restricted, so the previous behaviour still applies.
+    """
+    lowered = normalized_query.lower()
+    named = {
+        service
+        for service in {_service(item) for item in items}
+        if service and service != "unknown" and service.lower() in lowered
+    }
+    return named or None
+
+
+def _merge_paraphrases(buckets: dict[str, list[str]], threshold: float) -> list[list[str]]:
+    """Collapse buckets whose root causes are paraphrases of each other.
+
+    Returns the surviving groups of case ids. One group means "these all agree", so no conflict.
+    """
+    groups: list[tuple[str, list[str]]] = []
+    for key, ids in buckets.items():
+        for index, (group_key, group_ids) in enumerate(groups):
+            if same_cause(key, group_key, threshold):
+                groups[index] = (group_key, group_ids + [i for i in ids if i not in group_ids])
+                break
+        else:
+            groups.append((key, list(ids)))
+    return [ids for _key, ids in groups]
+
+
 def _contradiction_groups(
-    items: list[RecallResult], query_tokens: set[str]
+    items: list[RecallResult], query_tokens: set[str], policy: AbstentionPolicy,
+    focus: set[str] | None = None,
 ) -> dict[str, dict[str, list[str]]]:
     """Bucket recalled cases by service, then by root cause.
 
-    A service is only contradictory when it has two or more *distinct* root causes among
-    the cases that overlap the query. Cases that agree on the root cause are corroboration,
-    not conflict. Keying on the root cause is what prevents the false positive where every
-    same-service pair is treated as disagreeing.
+    A service is only contradictory when it holds two or more *materially different* root causes
+    among the cases that overlap the query. Cases that agree are corroboration, not conflict, and
+    neither are cases whose root cause is a paraphrase of another (see `same_cause`).
     """
     by_service: dict[str, dict[str, list[str]]] = {}
     for item in items:
+        service = _service(item)
+        if focus is not None and service not in focus:
+            continue
         key = (item.root_cause_key or "").strip().lower()
         if key in ("", "not confirmed", "unconfirmed"):
             continue
         overlap = query_tokens & tokenize(item.text)
         if not overlap:
             continue
-        bucket = by_service.setdefault(_service(item), {}).setdefault(key, [])
+        bucket = by_service.setdefault(service, {}).setdefault(key, [])
         if item.case_id not in bucket:
             bucket.append(item.case_id)
-    return {service: buckets for service, buckets in by_service.items() if len(buckets) > 1}
+
+    conflicts: dict[str, dict[str, list[str]]] = {}
+    for service, buckets in by_service.items():
+        groups = _merge_paraphrases(buckets, policy.contradiction_text_overlap)
+        if len(groups) > 1:
+            conflicts[service] = {f"group{i}": ids for i, ids in enumerate(groups)}
+    return conflicts
 
 
 def classify_candidates(
@@ -137,7 +197,8 @@ def classify_candidates(
     query_tokens = tokenize(normalized)
 
     ranked = sorted(results.items, key=lambda item: item.score_final, reverse=True)
-    contradiction_map = _contradiction_groups(ranked, query_tokens)
+    focus = _focused_services(ranked, normalized)
+    contradiction_map = _contradiction_groups(ranked, query_tokens, policy, focus)
     conflicts: dict[str, list[str]] = {}
     for service, buckets in contradiction_map.items():
         all_ids = [cid for ids in buckets.values() for cid in ids]

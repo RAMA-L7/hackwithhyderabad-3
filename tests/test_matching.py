@@ -10,6 +10,7 @@ from debugagent.memory.matching import (
     AbstentionPolicy,
     classify_candidates,
     normalize_query,
+    same_cause,
     tokenize,
 )
 from debugagent.schemas import RecallResult, RecallSet
@@ -269,6 +270,100 @@ class FinalScoreCollapseTests(unittest.TestCase):
         )
         _, decision = classify_candidates("live probe", recall_set(broken), POLICY, NOW)
         self.assertTrue(decision.abstained)
+
+
+    def test_conflict_about_another_service_is_not_reported(self):
+        """Regression: found live on 2026-09-28. A media-uploader question still recalled two
+        orders-api cases and reported them as contradicting each other. A disagreement about a
+        service you are not debugging is not actionable."""
+        report, _ = classify_candidates(
+            "media-uploader uploads over 2MB fail with connection reset",
+            recall_set(
+                item("mu-1", 0.95, service="media-uploader", root_cause_key="proxy-limit"),
+                item("oa-1", 0.30, service="orders-api", root_cause_key="proxy-limit",
+                     text="orders-api 2MB body limit"),
+                item("oa-2", 0.28, service="orders-api", root_cause_key="upstream-502",
+                     text="orders-api 502 on large body"),
+            ),
+            POLICY,
+            NOW,
+        )
+        by_id = {c.case_id: c for c in report.candidates + report.excluded}
+        self.assertEqual(by_id["oa-1"].conflicts_with, [])
+        self.assertEqual(by_id["oa-2"].conflicts_with, [])
+        self.assertNotEqual(by_id["mu-1"].relevance_class, "contradictory")
+
+    def test_conflict_is_still_reported_for_the_service_being_debugged(self):
+        report, _ = classify_candidates(
+            "orders-api uploads over 2MB fail with connection reset",
+            recall_set(
+                item("oa-1", 0.95, service="orders-api", root_cause_key="proxy-limit"),
+                item("oa-2", 0.28, service="orders-api", root_cause_key="upstream-502"),
+                item("mu-1", 0.30, service="media-uploader", root_cause_key="proxy-limit"),
+            ),
+            POLICY,
+            NOW,
+        )
+        by_id = {c.case_id: c for c in report.candidates + report.excluded}
+        self.assertIn("oa-2", by_id["oa-1"].conflicts_with)
+
+    def test_query_naming_no_service_keeps_the_unrestricted_behaviour(self):
+        report, _ = classify_candidates(
+            "large payloads fail on the proxy",
+            recall_set(
+                item("oa-1", 0.95, service="orders-api", root_cause_key="proxy-limit"),
+                item("oa-2", 0.28, service="orders-api", root_cause_key="upstream-502"),
+            ),
+            POLICY,
+            NOW,
+        )
+        by_id = {c.case_id: c for c in report.candidates + report.excluded}
+        self.assertIn("oa-2", by_id["oa-1"].conflicts_with)
+
+
+    def test_paraphrased_root_causes_are_not_a_contradiction(self):
+        """Regression: found live on 2026-09-28. Re-investigating an already-resolved issue
+        stored a paraphrase of the seed; the two were reported as contradicting each other and the
+        layer abstained on a correct match."""
+        report, decision = classify_candidates(
+            "media-uploader uploads over 2MB fail with a connection reset",
+            recall_set(
+                item("seed-003", 0.95, service="media-uploader",
+                     root_cause_key="reverse proxy request body limit rejected the upload",
+                     text="media-uploader uploads over 2MB fail with connection reset"),
+                item("new-001", 0.90, service="media-uploader",
+                     root_cause_key="reverse proxy request-body limit rejected uploads above the limit",
+                     text="media-uploader resets large uploads"),
+            ),
+            POLICY,
+            NOW,
+        )
+        self.assertFalse(decision.abstained)
+        for candidate in report.candidates:
+            self.assertEqual(candidate.conflicts_with, [])
+            self.assertNotEqual(candidate.relevance_class, "contradictory")
+
+    def test_genuinely_different_root_causes_still_conflict(self):
+        report, _ = classify_candidates(
+            "orders-api returns 502 for payloads above 2MB",
+            recall_set(
+                item("seed-001", 0.95, service="orders-api",
+                     root_cause_key="upstream proxy request-size limit truncated the body",
+                     text="orders-api 502 on large payloads"),
+                item("seed-002", 0.90, service="orders-api",
+                     root_cause_key="upstream dependency returned 502 for oversized bodies",
+                     text="orders-api 502 on large payloads"),
+            ),
+            POLICY,
+            NOW,
+        )
+        by_id = {c.case_id: c for c in report.candidates}
+        self.assertIn("seed-002", by_id["seed-001"].conflicts_with)
+
+    def test_same_cause_helper(self):
+        self.assertTrue(same_cause("proxy body limit hit", "reverse proxy request body limit was hit", 0.5))
+        self.assertFalse(same_cause("proxy body limit hit", "database connection pool exhausted", 0.5))
+        self.assertFalse(same_cause("", "anything", 0.5))
 
 
 class MemoryIsNotEvidenceTests(unittest.TestCase):

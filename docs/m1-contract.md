@@ -4,10 +4,12 @@
 section 5 records limitations of the code implemented so far and is evidence, not contract.
 **Date:** 2026-09-27 · **Revised:** 2026-09-28 (abstention rule 3, C2 row, new section 5)
 · **Deadline:** MVP demo-ready 29 Sept afternoon.
-**Implementation status:** the memory layer (`MemoryCase`, `MemoryStore`, Hindsight adapter,
-idempotency ledger, recall dedup, classification, abstention, contradiction detection, six
-synthetic seeds, seed loader) is implemented and tested at `rama-m0` commit `6f60af1` — 78 tests,
-of which 7 run live against Hindsight Cloud. The Mukul-owned pipeline does not exist yet.
+**Implementation status:** the Phase 1 pipeline is integrated and running end to end on
+`integration/phase1` (merge of `rama-m0` and `mukul-loop`): the memory layer (`MemoryCase`,
+`MemoryStore`, Hindsight adapter, idempotency ledger, recall dedup, classification, abstention,
+contradiction detection, six synthetic seeds, seed loader) and the pipeline (`normalize`, `recall_match`,
+`evidence`, `hypothesize`, `verify`, `resolve_retain`, `llm/` router, CLI) are joined by
+`pipeline/memory_adapter.py`. 211 tests pass, of which 9 run live against Hindsight Cloud.
 **Inputs:** `docs/domain-neutral-system-design.md`, `docs/architecture-review.md`,
 `docs/phase1-execution-plan.md`, `docs/provider-verification.md` (M0 run `20260927T183607Z`),
 `docs/two-phase-implementation-plan.md`, `docs/implementation-note-rama-memory.md`.
@@ -241,11 +243,13 @@ None of them blocks the MVP path; all of them bound what may be claimed.
 |---|---|---|---|
 | L1 | **`update()` / `invalidate()` do not work against the installed SDK** | `hindsight-client 0.10.1` exposes **no memory-curation method** (`update_memory` does not exist; verified `AttributeError`). The adapter calls it, so both raise at runtime. Product-level curation (edit / invalidate / restore) *is* M0-verified via the REST API and UI, so the capability exists — the Python binding does not | Must stay outside the MVP path. Correct fix is the REST API or an SDK upgrade, not a code tweak. Do not claim curation works |
 | L2 | **`root_cause_key` is derived text, not a curated taxonomy** | It is the lowercased root-cause string (first 64 chars), computed in `case_metadata()` | No taxonomy maintenance cost, but also no canonical grouping |
-| L3 | **Contradiction detection cannot reliably catch paraphrased root causes** | Because of L2, two cases describing the same root cause differently get different keys. Exact-text disagreement is detected; a paraphrase is not | Under-detects conflicts. It never invents one, which is the safer direction, but it is a real blind spot |
-| L4 | **Threshold values are uncalibrated** | `min_final_score 0.05`, `semantic_floor 0.70`, `weak_reference_floor 0.6`, `contradiction_margin 0.2`, `stale_after_days 365` are provisional defaults from a six-case bank | Treat as configuration, not truth. `semantic_floor` additionally does not separate the M0 vague class — see `m1-freeze-decisions.md` §C2.3 |
+| L3 | **Contradiction detection cannot reliably catch paraphrased root causes** | Because of L2, two cases describing the same root cause differently get different keys | Mitigated, not solved: `contradiction_text_overlap` (provisional, 0.5) treats near-identical root causes as the same cause, measured after retaining a paraphrase wrongly abstained. Exact-text and clearly-different causes still detected. A curated taxonomy remains the real fix |
+| L4 | **Threshold values are uncalibrated** | `min_final_score 0.05`, `semantic_floor 0.70`, `weak_reference_floor 0.6`, `contradiction_margin 0.2`, `contradiction_text_overlap 0.5`, `stale_after_days 365` are provisional defaults from a six-case bank | Treat as configuration, not truth. `semantic_floor` additionally does not separate the M0 vague class — see `m1-freeze-decisions.md` §C2.3. **Not to be narrated as validated in the demo** |
 | L5 | **Thresholds come from two places** | `min_final_score`, `weak_reference_floor`, `stale_after_days`, `max_tokens` are env-driven via `MemoryConfig`; `semantic_floor` and `contradiction_margin` are constructor-only on `AbstentionPolicy` | A consumer setting env vars alone cannot tune the fallback or the margin. Worth unifying before calibration |
 | L6 | **Isolated tests under-reported risk** | The live suite initially passed against a small bank. All three behavioural defects (score collapse, row duplication, contradiction false positive) appeared only against a **dirty/large** bank | A green test run is not evidence of correct behaviour at seed-bank scale. Re-run live against the final bank, not a fresh one |
 | L7 | **Ledger is local, single-writer** | Idempotency lives in `data/memory_ledger.json`, not in the backend | Fine for one machine; two writers can double-retain. Not a Phase 1 concern |
+| L8 | **A green test run is not evidence at seed-bank scale** | Integration (2026-09-28) found two classification defects and one CLI crash that **no** test caught, because every test used a canned view or a single-case bank | All three appeared only after the two sides were joined and run against a real seeded bank. Rehearse on the seeded bank, never an empty one |
+| L9 | **Foreign-service cases still surface as weak references** | When the semantic fallback admits a case from a different service, it is shown as `partial`, not `irrelevant`. A genuine conflict about another service is no longer reported (fixed 2026-09-28) | The CLI shows the environment mismatch, so it is informative rather than misleading, but the candidate list can be longer than strictly necessary. Depends on L4 calibration |
 
 ## 6. Open Contract Questions
 

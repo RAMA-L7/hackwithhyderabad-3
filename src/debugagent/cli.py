@@ -1,11 +1,11 @@
-"""debugagent CLI (MK8).
+"""debugagent CLI (MK8, Hindsight memory wired at MK9).
 
     PYTHONPATH=src python3 -m debugagent.cli debug      # interactive session
     PYTHONPATH=src python3 -m debugagent.cli inspect    # trace of the last session
 
-Until MK9 the memory side is the offline stand-in (--memory offline:<file>); MK9 adds the Hindsight
-adapter. Every error reaches the engineer as one line; memory and LLM failures are never shown as
-"no relevant memory" or "the model found nothing".
+Memory is Hindsight Cloud by default (env: HINDSIGHT_URL / HINDSIGHT_API_KEY / HINDSIGHT_BANK_ID);
+`--memory offline:<file>` rehearses the loop without a network. Every error reaches the engineer as
+one line; memory and LLM failures are never shown as "no relevant memory" or "the model found nothing".
 """
 
 from __future__ import annotations
@@ -25,11 +25,24 @@ from debugagent.pipeline.normalize import InputError, NormalizationError
 from debugagent.pipeline.types import OUTCOME_CLASSES, DebugInput, Evidence, Hypothesis, SchemaError
 from debugagent.pipeline.verify import EngineerDecision, VerificationError
 
-DEFAULT_MEMORY = "offline:demo/offline-memory.json"
+DEFAULT_MEMORY = "hindsight"
 
 
 class AbortSession(Exception):
     pass
+
+
+def _use_utf8(*streams) -> None:
+    """The four sections are drawn with box rules that a cp1252 console (the Windows default)
+    cannot encode, which would crash the first render. Ask for UTF-8 and never fail if we cannot."""
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
 
 
 def load_env_file(path: str) -> None:
@@ -145,17 +158,23 @@ def make_port(spec: str, state_dir: Path):
     if kind == "offline" and target:
         return OfflineMemoryPort(target, str(state_dir / "offline-retained.jsonl"))
     if kind == "hindsight":
-        raise InputError("the Hindsight memory adapter arrives at MK9; use --memory offline:<file> until then")
-    raise InputError(f"unknown --memory {spec!r}; use offline:<file>")
+        # MK9: the real Hindsight Cloud bank. Env supplies HINDSIGHT_URL / HINDSIGHT_API_KEY /
+        # HINDSIGHT_BANK_ID. A missing or rejected configuration surfaces as MemoryFailure, which the
+        # caller prints as one line. It is never downgraded to "no relevant memory".
+        from debugagent.pipeline.memory_adapter import build_port
+        return build_port()
+    raise InputError(f"unknown --memory {spec!r}; use hindsight or offline:<file>")
 
 
 def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm=None,
          state_dir: str | Path = ".debugagent") -> int:
     parser = argparse.ArgumentParser(prog="debugagent", description="Memory-informed debugging assistant")
+    _use_utf8(out, err, sys.stdout, sys.stderr)
     commands = parser.add_subparsers(dest="command", required=True)
     debug = commands.add_parser("debug", help="investigate one issue interactively")
     debug.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
-    debug.add_argument("--memory", default=DEFAULT_MEMORY, help=f"memory source (default {DEFAULT_MEMORY})")
+    debug.add_argument("--memory", default=DEFAULT_MEMORY,
+                       help="memory source: hindsight (default) or offline:<file>")
     commands.add_parser("inspect", help="print the trace of the last session")
     args = parser.parse_args(argv)
     state = Path(state_dir)

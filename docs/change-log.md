@@ -628,3 +628,89 @@ Mukul's code, and added a handoff-readiness section. Documentation was changed t
 code does, not what it was intended to do.
 
 No `.env` change. `main` and `origin/main` untouched.
+
+## Stage 20 - MK9 integration: both sides joined, Phase 1 loop running end to end (2026-09-28)
+
+**Branch:** `integration/phase1`, cut from `origin/mukul-loop`, merging `rama-m0` @ `7254fc3`.
+Merge commit `7a5763e`, **zero conflicts** — the two sides had touched disjoint paths, exactly as
+`docs/phase1-mukul-plan.md` §1 intended. `main` and `origin/main` remain at `1800c62`.
+
+**Correction to the assumed starting state:** `origin/mukul-loop` did **not** contain the memory-layer
+commits. This was deliberate branch independence, not an oversight, and MK9 is the step that joins
+them. No work was lost; the merge brought my side in whole.
+
+### What already existed (nothing rewritten)
+
+Rama: `schemas.py`, `memory/` (store Protocol, Hindsight adapter, idempotency ledger, recall dedup,
+classification, abstention, contradiction detection), `config.py`, `seeds/` + loader — 78 tests.
+Mukul: `pipeline/` (`types`, `normalize`, `memory_port`, `recall_match`, `evidence`, `hypothesize`,
+`verify`, `investigate`, `render`), `llm/router.py`, `cli.py`, `demo/offline-memory.json` — 104 tests.
+Both suites passed together immediately after the merge: **182 tests, 0 failures**, before a line of
+glue was written.
+
+### The only glue added
+
+- `src/debugagent/pipeline/memory_adapter.py` — `HindsightMemoryPort`, the single module that joins
+  the two sides. Calls `HindsightMemoryStore.recall`/`retain`, runs `classify_candidates`, renders the
+  `MemoryView`/`RetentionDecision` dicts `memory_port.py` pins, joins `text` and `outcome` onto each
+  candidate by `case_id` (Q8), and maps memory errors to `MemoryFailure` so an unreachable bank is
+  never read as "no memory found". Builds the abstention policy from `MemoryConfig`.
+- `cli.make_port` now accepts `hindsight` and it is the default; `--memory offline:<file>` still
+  rehearses without a network. `pyproject.toml` gained the `debugagent` console entry point.
+- `HindsightMemoryStore.config` — a read-only accessor, so the adapter does not reach into `_config`.
+
+### Three defects found by running the integrated system
+
+None of these was caught by any test, because every test used a canned view or a single-case bank.
+All three appeared only once the two sides were joined and run against a real seeded bank.
+
+1. **A conflict was reported for a service nobody was debugging.** A `media-uploader` question still
+   recalled two `orders-api` cases and reported them as contradicting each other. Contradictions are
+   now grouped only for services the engineer names in the query; when the query names none,
+   behaviour is unchanged. The genuine `orders-api` conflict is still surfaced.
+2. **Re-investigating a resolved issue made memory abstain.** Retaining a case stores a paraphrase of
+   a seed's root cause, so the derived keys differ and looked like a disagreement — contract
+   limitation L3 becoming user-visible on the second run of the demo. `contradiction_text_overlap`
+   (provisional, 0.5) now treats near-identical root causes as the same cause. A curated taxonomy
+   remains the real fix; this is the smallest reversible step towards it.
+3. **`render.py`'s `━` rule crashed the CLI on Windows.** A cp1252 console cannot encode U+2501, so
+   the first render raised `UnicodeEncodeError` and the session died. Fixed at the stream level in
+   `cli.py` (`_use_utf8`), leaving the rendering design untouched. This would have crashed the demo
+   recording on the demo machine.
+
+Each is pinned by a regression test. All three are recorded in the contract as L3 (mitigated), L8
+(a green run is not evidence at seed-bank scale) and L9 (foreign-service cases still surface as weak
+references).
+
+### Tests
+
+26 new tests in `tests/test_integration_flow.py` (adapter shape, Q8 join, dedup, error mapping,
+policy provenance, retain idempotency, and the full loop driven through the real adapter) and
+`tests/test_integration_cli_live.py` (the real CLI entry point against the real Hindsight port).
+**211 tests pass offline (6 live skipped); 211 with 9 live tests against Hindsight Cloud.**
+
+The trust boundary is asserted directly, not assumed: a recalled case never reaches Evidence (the
+gap stays visible and unknown), an abstained memory forces every hypothesis to `generic` and uncited,
+a perfect match still yields `insufficient_evidence` when current evidence is missing, and retention
+happens only after a recorded engineer decision.
+
+### End-to-end, live
+
+Real Hindsight Cloud plus the real LLM router, engineer scripted. Act 1 (frontend CSS) abstained with
+all six cases excluded and a generic proposal. Act 2 (media-uploader 2MB) recalled the seeded case as
+`relevant` with its original environment and stated the difference; three hypotheses were proposed and
+cited; the case was retained with its failed approach. Re-running Act 2 skipped retention through the
+idempotency ledger. The primary provider served one run and the fallback served another, both shown
+via `fallback_used` as designed.
+
+### Documentation
+
+- `docs/phase1-demo-scenario.md` rewritten around **measured** behaviour. The old Act 1 did not
+  abstain — it recalled four candidates — exactly the conflict Mukul flagged before the merge. The
+  replacement query was measured and abstains. Act 3 was added for the contradiction case, also
+  measured. The script now forbids narrating thresholds as validated.
+- `docs/decision-log.md` records Rama's answers to Q0–Q8, the branch-state correction, the three
+  defects, and the CLI encoding bug.
+- `docs/m1-contract.md` implementation status and limitations updated (L3 mitigated, L8, L9 added).
+
+No `.env` change, no new dependency, no Phase 2 scope. `main` untouched.

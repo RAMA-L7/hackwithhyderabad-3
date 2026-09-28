@@ -160,6 +160,11 @@ class HindsightMemoryStore:
         self._ledger = ledger if ledger is not None else Ledger(config.ledger_path)
         self._ensure_bank()
 
+    @property
+    def config(self) -> MemoryConfig:
+        """The configuration this store was built with (read-only)."""
+        return self._config
+
     @staticmethod
     def _build_client(config: MemoryConfig) -> Any:
         if not config.configured:
