@@ -118,7 +118,9 @@ Rules the pipeline holds regardless of the port implementation:
 **Progress (2026-09-28):** MK0 ✅ (14/14 on final config, see `phase1-mukul-m0-plan.md` §6) ·
 MK1 ✅ (`pipeline/types.py`, `pipeline/memory_port.py`, `tests/loop_support.py`; 21 tests green),
 built on the §5 proposals Q1/Q3/Q5 plus `EvidenceItem.name` (Q4) — each is one field to change if
-Rama disagrees.
+Rama disagrees. · MK4 ✅ (`llm/router.py`; 28 fake-transport tests; live smoke:
+Baseten served in 2.8 s, forced failover served by OpenRouter in 4.1 s with `fallback_used=true`) ·
+MK3 ✅ (`pipeline/normalize.py`; 12 tests; hint/text conflict fails closed, decided 2026-09-28).
 
 MK1–MK8 run fully **offline** against `FakeMemoryPort` (canned views + retain spy) and a fake
 LLM transport, both in `tests/loop_support.py`. No keys, no Hindsight, no Rama code.
@@ -207,3 +209,47 @@ service name. Confirm with real scores right after MK9.
 
 `update()` / `invalidate()` (non-functional on SDK 0.10.1) · LLM normalizer · `reflect()` ·
 web UI · second domain · auto-retention · new dependencies.
+
+## 8. MK4 / MK3 design
+
+### MK4 — `llm/router.py` (every value comes from MK0 §6)
+
+- **Interface:** `LLMRouter.complete_structured(prompt, *, schema, name, check=None) -> StructuredResult`
+  (`data`, `provider`, `model`, `fallback_used`, `attempts`). `complete()` for plain text is
+  skipped: its only planned consumer is hypothesis generation, which is structured.
+- **Routes from env:** `LLM_{PRIMARY,FALLBACK}_{PROVIDER,MODEL,BASE_URL,API_KEY}`; timeout
+  `LLM_{ROLE}_TIMEOUT_S`, else `LLM_TIMEOUT_S` (primary 10 s, fallback 17 s in `.env.live`); invalid-output
+  retries `LLM_MAX_RETRIES_PRIMARY` (1). Unknown provider or missing value → `LLMConfigError` at startup.
+- **Payload:** `response_format` json_schema strict, `max_tokens` 1500, plus per-provider reasoning
+  control (baseten `chat_template_kwargs.thinking=false`, openrouter `reasoning.effort=low`). Never
+  `require_parameters` (Space Bunny returns 404 with it).
+- **Parser:** read `content` only (list content is joined); ignore `reasoning*`; `finish_reason=length`,
+  null or whitespace content, non-JSON, non-object root → invalid; strip a ```json fence.
+  Then local schema validation, then optional `check(data)` (e.g. citation integrity) → invalid.
+- **Flow:** invalid output → retry the same route once → fall back → `StructuredOutputError`.
+  Timeout / unreachable / 429 / 5xx / 200-with-error → fall back immediately. 401/403 → `LLMAuthError`,
+  400/402/404/other 4xx → `LLMConfigError`, **never fail over**. Nothing unvalidated is ever returned.
+- **Visibility:** every attempt is recorded (`route`, `provider`, `model`, `outcome`, `error_class`, `ms`)
+  and logged on `debugagent.llm`; the API key never appears in reprs, logs or attempts.
+- **Transport** is injectable `(url, key, payload, timeout) -> (status, text)`, raising
+  `TimeoutError`/`OSError`, so tests use a fake with no network.
+
+### MK3 — `pipeline/normalize.py` (built)
+
+`normalize(raw: DebugInput) -> NormalizedDebugCase`, deterministic, no LLM.
+
+| Output | Rule |
+|---|---|
+| `problem_signature` | first non-empty line of `description`, whitespace collapsed, trailing `.` stripped, case kept |
+| `symptoms` | remaining non-empty description lines that are not pure `key=value` lines, then `measurements`; order kept, exact duplicates dropped |
+| `environment` | every taxonomy key (`service`, `runtime`, `proxy`, `region`) present, default `None`; filled from `key=value` / `key: value` in the text (taxonomy keys only, so `size=2MB` is not read as environment); then `environment_hints` added (any valid key, engineer-supplied) |
+| `raw_description` | the description, unchanged |
+| `source_case_ids` | `[]` |
+
+- Blank description → `InputError`. Output is validated with `NormalizedDebugCase.from_dict` →
+  `NormalizationError` listing the fields.
+- **Decided (2026-09-28):** a hint that disagrees with the text (text `service=a`, hint `service=b`),
+  or the text stating one key twice with different values, **fails closed with `NormalizationError`**
+  naming the key. Keys are matched as whole tokens, so `web-service=foo` is not `service`.
+- Tests: nothing invented (unstated keys stay `None`); values verbatim; hints never overwritten;
+  non-taxonomy `a=b` in text ignored; conflict raises; blank raises; same input → same output.
