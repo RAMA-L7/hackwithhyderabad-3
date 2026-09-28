@@ -15,8 +15,34 @@ retrievable and distinguishable. Single domain for the MVP, not a second domain.
 (three identical calls returned identical scores), but the scores are query-relative, so **adding a
 case changes them**. Rehearsing on the same bank you record on changes what the judge sees.
 
+### A fresh bank also needs a fresh ledger directory
+
+`data/memory_ledger.json` records which cases have already been retained, under an idempotency key of
+`sha256(problem_signature | session_id)` — **that key does not include the bank id.** So a new
+`HINDSIGHT_BANK_ID` combined with the default data directory is a trap: all six seeds get reported as
+*"skipped: case already retained"* and the new bank is left **empty**, which breaks all three acts.
+Always pair the two. Validated pattern (PowerShell):
+
+```powershell
+$env:HINDSIGHT_BANK_ID = "demo-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+$env:DEBUGAGENT_DATA_DIR = "$env:TEMP\demo-ledger-$($env:HINDSIGHT_BANK_ID)"
+```
+
+bash equivalent: `export HINDSIGHT_BANK_ID=demo-$(date +%s)` together with
+`export DEBUGAGENT_DATA_DIR="$TMPDIR/demo-ledger-$HINDSIGHT_BANK_ID"`
+
+### How to confirm the bank really is fresh
+
+1. **Before seeding**, the new bank should have no memories — `list_memories` returns a 404.
+2. **Seeding must report `inserted: 6, skipped: 0, rejected: 0`.** If it reports `skipped: 6`, a
+   previous ledger directory is being reused; fix that before going further.
+3. **Do not use the memory-unit count as the freshness criterion.** It is asynchronous: one freshly
+   seeded bank was observed reporting 17 units and then 25 minutes later, with no further writes. The
+   seed report is the reliable signal.
+
+### Then seed and run the acts
+
 ```bash
-export HINDSIGHT_BANK_ID=debugagent-demo-$(date +%s)   # a NEW name per recording
 PYTHONPATH=src python -c "from debugagent.config import load_memory_config; \
 from debugagent.memory.hindsight_store import HindsightMemoryStore; \
 from debugagent.seeds.loader import load_seed_cases; \
@@ -29,7 +55,8 @@ The `store.close()` matters: the Hindsight client holds an aiohttp session, and 
 close the process prints *"Unclosed client session"* and *"Unclosed connector"* on exit. The CLI
 closes its own port automatically; this one-liner has to do it by hand.
 
-Seeding the six cases took **24–38 s**. Running it twice inserts 0 and skips 6, so it is safe to repeat.
+Seeding the six cases took **24–38 s**. Running it twice against the *same* ledger inserts 0 and
+skips 6, so it is safe to repeat.
 
 ## Cast
 

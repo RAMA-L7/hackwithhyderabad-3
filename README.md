@@ -91,6 +91,20 @@ The pipeline is integrated on `integration/phase1`. It is stdlib-only apart from
 # 1. credentials: HINDSIGHT_URL / HINDSIGHT_API_KEY / HINDSIGHT_BANK_ID, and the LLM_* pair
 cp .env.example .env          # then fill it in; .env is git-ignored
 
+# 1b. a fresh bank MUST be paired with a fresh ledger directory.
+#     data/memory_ledger.json keys idempotency on sha256(problem_signature|session_id),
+#     which does not include the bank id - so a new bank with the default data dir reports
+#     all six seeds as "already retained" and stays EMPTY.
+#     bash: export HINDSIGHT_BANK_ID=demo-$(date +%s)
+#           export DEBUGAGENT_DATA_DIR="$TMPDIR/demo-ledger-$HINDSIGHT_BANK_ID"
+export HINDSIGHT_BANK_ID=demo-$(date +%s)
+export DEBUGAGENT_DATA_DIR="$TMPDIR/demo-ledger-$HINDSIGHT_BANK_ID"
+
+# 1c. confirm the bank is fresh: before seeding, list_memories should return 404.
+#     Do NOT judge freshness by the memory-unit count - it is asynchronous (the same
+#     freshly seeded bank was seen at 17 units and later 25, with no further writes).
+#     The reliable signal is the seed report in step 2: 6 inserted, 0 skipped, 0 rejected.
+
 # 2. seed the bank once (idempotent - a second run inserts nothing).
 #    close() releases the backend HTTP session; without it Python prints
 #    "Unclosed client session" / "Unclosed connector" when the process exits.
