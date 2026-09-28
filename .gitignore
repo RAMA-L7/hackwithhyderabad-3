@@ -12,6 +12,7 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 /graphify-out
+.debugagent/
 
 # Environment / Secrets (never commit these)
 .env

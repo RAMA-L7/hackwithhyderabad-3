@@ -76,3 +76,66 @@ class FakeMemoryPort:
         self.retained.append(copy.deepcopy(case))
         return {"retained": self.retained_flag, "reason": "fake store", "memory_case_id": "fake-fact-1",
                 "validated": True, "case_key": "fake-key-1"}
+
+
+def hyp(text="proxy body limit rejects large uploads", cites=(), step="check client_max_body_size",
+        refute=("resets persist after raising the limit",)):
+    return {"hypothesis": text, "supporting_case_ids": list(cites), "refutation_conditions": list(refute),
+            "recommended_next_step": step}
+
+
+class FakeLLM:
+    """Stands in for LLMRouter: returns scripted outputs in order, applying the same schema validation and
+    caller check, so an invalid output is 'retried' with the next one, exactly like the router."""
+
+    def __init__(self, *outputs, provider="fake", model="fake-model"):
+        self.outputs = list(outputs)
+        self.provider, self.model = provider, model
+        self.prompts: list[str] = []
+
+    def complete_structured(self, prompt, *, schema, name="response", check=None):
+        from debugagent.llm.router import StructuredOutputError, StructuredResult, validate
+
+        self.prompts.append(prompt)
+        attempts = []
+        while self.outputs:
+            data = self.outputs.pop(0)
+            problems = validate(data, schema) or (check(data) if check else [])
+            attempts.append({"route": "fake", "error_class": "INVALID_OUTPUT" if problems else None,
+                             "detail": "; ".join(problems)})
+            if not problems:
+                return StructuredResult(data, self.provider, self.model, False, attempts)
+        raise StructuredOutputError("fake: no valid output", error_class="INVALID_OUTPUT", attempts=attempts)
+
+
+class ScriptedEngineer:
+    """Engineer protocol with fixed answers; records everything shown."""
+
+    def __init__(self, facts=None, decisions=None, resolution=None):
+        from debugagent.pipeline.verify import EngineerDecision
+
+        self.facts = facts or {}
+        self.decisions = decisions if decisions is not None else {}
+        self.default = EngineerDecision("accept", "supported", True, "looks right")
+        self.resolution = resolution
+        self.shown: list[str] = []
+        self.asked: list[tuple] = []
+
+    def show(self, text):
+        self.shown.append(text)
+
+    def current_facts(self, evidence):
+        return dict(self.facts)
+
+    def decide(self, hypothesis, mismatched, missing):
+        self.asked.append((hypothesis.ref, list(mismatched), list(missing)))
+        return self.decisions.get(hypothesis.ref, self.default)
+
+    def resolve(self, session):
+        return self.resolution
+
+
+RESOLVED = {"action_taken": "raised client_max_body_size to 10m", "observed_result": "no resets above 2 MB",
+            "root_cause_confirmed": "reverse proxy body limit", "outcome": "resolved",
+            "failed_approaches": [{"approach": "raised client timeout", "why_failed": "proxy closed first"}],
+            "evidence_refs": ["log://photo-api/2026-09-28/nginx-error.log"]}
