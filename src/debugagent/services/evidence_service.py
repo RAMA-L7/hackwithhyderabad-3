@@ -7,6 +7,7 @@ evidence verifies.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Iterable, Mapping
 
 from debugagent.domain.errors import EvidenceError
 from debugagent.domain.models import Evidence, EvidenceItem, NormalizedDebugCase
@@ -30,12 +31,14 @@ class EvidenceService:
         items += [self._item(OBSERVATION, symptom, at) for symptom in case.symptoms]
         return Evidence(items, self._unknown(items))
 
-    def add_facts(self, evidence: Evidence, facts: dict[str, str | None]) -> Evidence:
-        """Append facts. Filling an unknown field replaces its placeholder; restating a known field with a
-        different value fails closed. Returns a new Evidence; the original is unchanged."""
+    def add_facts(self, evidence: Evidence,
+                  facts: Mapping[str, str | None] | Iterable[tuple[str, str | None]]) -> Evidence:
+        """Append facts (a mapping, or name/value pairs so several observations can be given). Filling an
+        unknown field replaces its placeholder; restating a known field with a different value fails closed.
+        Returns a new Evidence; the original is unchanged."""
         at = self.clock()
         items = list(evidence.items)
-        for raw_name, raw_value in facts.items():
+        for raw_name, raw_value in (facts.items() if isinstance(facts, Mapping) else facts):
             name = raw_name.strip().lower()
             value = raw_value.strip() if isinstance(raw_value, str) and raw_value.strip() else None
             if name == OBSERVATION:

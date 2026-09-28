@@ -102,6 +102,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("skipped 'service=other-api': service is already 'photo-api' from your description", out)
 
+    def test_plain_sentence_fact_is_an_observation(self):
+        lines = SCRIPT[:5] + ["requests time out after 30 s", "runtime=python3.11", "region=eu-west-1", ""] + SCRIPT[8:]
+        port = FakeMemoryPort(RELEVANT_VIEW)
+        code, out, err = self.run_cli(["debug"], lines, port=port)
+        self.assertEqual(code, 0, err)
+        self.assertIn("observation: requests time out after 30 s", out)
+
     def test_bad_answer_is_re_asked(self):
         lines = SCRIPT[:8] + ["maybe"] + SCRIPT[8:]
         code, out, err = self.run_cli(["debug"], lines, port=FakeMemoryPort(RELEVANT_VIEW))

@@ -16,8 +16,9 @@ class EngineerPort(Protocol):
         """A stage finished: 'memory', 'evidence', 'proposal', 'decision' or 'retention'.
         The implementation decides how to present it (the terminal renders the trust sections)."""
 
-    def current_facts(self, evidence: Evidence) -> dict[str, str | None]:
-        """Facts observed now (name -> value, None for 'unknown'). Never recalled content."""
+    def current_facts(self, evidence: Evidence) -> dict[str, str | None] | list[tuple[str, str | None]]:
+        """Facts observed now: name -> value (None for 'unknown'), or (name, value) pairs; name 'observation'
+        may repeat. Never recalled content."""
 
     def decide(self, hypothesis: Hypothesis, mismatched: list[str], missing: list[str]) -> EngineerDecision:
         """The engineer's verdict on one hypothesis."""
