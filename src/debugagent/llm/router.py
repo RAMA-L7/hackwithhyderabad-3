@@ -21,6 +21,17 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
+from debugagent.llm.tools import (
+    MAX_TOOL_TURNS,
+    ToolCall,
+    ToolCallError,
+    ToolDefinition,
+    ToolDefinitionError,
+    ToolResultMessage,
+    parse_tool_calls,
+    tool_choice_payload,
+)
+
 log = logging.getLogger("debugagent.llm")
 log.addHandler(logging.NullHandler())  # the CLI configures real handlers
 
@@ -57,6 +68,39 @@ class StructuredOutputError(LLMError):
     """Routes answered, but no output passed local validation."""
 
 
+class LLMToolUnsupported(LLMError):
+    """Tool calling was requested but the selected route is not enabled for it. Never downgraded."""
+
+
+class LLMToolTurnLimit(LLMError):
+    """The bounded tool loop reached `max_turns`. Typed so a runaway loop is never silent."""
+
+
+class LLMToolCallInvalid(LLMError):
+    """The provider returned a malformed tool call. Raised, never coerced into empty arguments."""
+
+
+@dataclass(frozen=True)
+class ToolLoopResult:
+    """Outcome of a bounded tool loop: the validated final answer plus what happened on the way."""
+
+    result: StructuredResult
+    turns: int
+    tool_calls: tuple[ToolCall, ...]
+    tool_results: tuple[ToolResultMessage, ...]
+
+    def to_dict(self) -> dict:
+        return {
+            "provider": self.result.provider,
+            "model": self.result.model,
+            "fallback_used": self.result.fallback_used,
+            "turns": self.turns,
+            "tool_calls": [{"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
+                           for c in self.tool_calls],
+            "tool_results": [{"call_id": r.call_id, "name": r.name, "ok": r.ok} for r in self.tool_results],
+        }
+
+
 @dataclass(frozen=True)
 class Route:
     role: str
@@ -65,6 +109,10 @@ class Route:
     base_url: str
     api_key: str = field(repr=False)
     timeout_s: float = 30.0
+    # P2: tool calling is opt-in per route and off by default. Nothing in this repository has measured
+    # that either provider serves tool calls, so a route must be enabled deliberately (LLM_<ROLE>_TOOLS)
+    # rather than assumed. A disabled route raises LLMToolUnsupported instead of silently degrading.
+    supports_tools: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,6 +220,10 @@ def validate(value: Any, schema: dict, path: str = "$") -> list[str]:
     return errors
 
 
+def _flag(env: Mapping[str, str], name: str) -> bool:
+    return env.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def load_routes(env: Mapping[str, str] | None = None) -> tuple[Route, Route]:
     env = os.environ if env is None else env
     routes, missing = [], []
@@ -189,7 +241,8 @@ def load_routes(env: Mapping[str, str] | None = None) -> tuple[Route, Route]:
             raise LLMConfigError(f"timeout {timeout!r} for {role} is not a number", error_class="CONFIG")
         routes.append(Route(role.lower(), provider, env.get(names["MODEL"], "").strip(),
                             env.get(names["BASE_URL"], "").strip().rstrip("/"),
-                            env.get(names["API_KEY"], "").strip(), timeout_s))
+                            env.get(names["API_KEY"], "").strip(), timeout_s,
+                            supports_tools=_flag(env, f"LLM_{role}_TOOLS")))
     if missing:
         raise LLMConfigError(f"missing LLM settings: {', '.join(missing)}", error_class="CONFIG")
     return routes[0], routes[1]
@@ -197,12 +250,15 @@ def load_routes(env: Mapping[str, str] | None = None) -> tuple[Route, Route]:
 
 class LLMRouter:
     def __init__(self, primary: Route, fallback: Route, *, transport: Transport = http_post,
-                 retries_on_invalid: int = 1, max_tokens: int = MAX_TOKENS):
+                 retries_on_invalid: int = 1, max_tokens: int = MAX_TOKENS,
+                 max_tool_turns: int = MAX_TOOL_TURNS):
         self.primary = primary
         self.fallback = fallback
         self.transport = transport
         self.retries_on_invalid = retries_on_invalid
         self.max_tokens = max_tokens
+        # P2. Bounded and configurable; the loop raises LLMToolTurnLimit rather than retrying forever.
+        self.max_tool_turns = max_tool_turns
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, **kwargs) -> "LLMRouter":
@@ -211,6 +267,12 @@ class LLMRouter:
         retries = env.get("LLM_MAX_RETRIES_PRIMARY") or "1"
         if not retries.isdigit():
             raise LLMConfigError(f"LLM_MAX_RETRIES_PRIMARY={retries!r} is not a whole number", error_class="CONFIG")
+        turns = env.get("LLM_MAX_TOOL_TURNS") or str(MAX_TOOL_TURNS)
+        if not turns.isdigit() or int(turns) < 1:
+            raise LLMConfigError(f"LLM_MAX_TOOL_TURNS={turns!r} is not a positive whole number",
+                                 error_class="CONFIG")
+        if "max_tool_turns" not in kwargs:
+            kwargs["max_tool_turns"] = int(turns)
         return cls(primary, fallback, retries_on_invalid=int(retries), **kwargs)
 
     def complete_structured(self, prompt: str, *, schema: dict, name: str = "response",
@@ -281,3 +343,156 @@ class LLMRouter:
                 "llm %s provider=%s model=%s outcome=%s error_class=%s ms=%s",
                 route.role, route.provider, route.model, record["outcome"], error_class, record["ms"])
         return data, record
+
+    # --- P2: bounded tool loop -----------------------------------------------------------------------------
+    # Transport only. This never executes a tool, never consults the P1 registry, and never crosses to
+    # the other route mid-loop. The caller supplies `execute_tool`; P4+ decides what runs behind it.
+
+    def complete_with_tools(self, prompt: str, *, tools, tool_choice: str = "auto",
+                            schema: dict, name: str = "response",
+                            check: Callable[[dict], list[str]] | None = None,
+                            execute_tool: Callable[[ToolCall], ToolResultMessage],
+                            max_turns: int | None = None) -> ToolLoopResult:
+        """Run a bounded tool loop on the primary route and return the validated final answer.
+
+        `tools` is a sequence of ToolDefinition (or mappings). When the provider asks for tools, each
+        call is parsed and validated, handed to `execute_tool`, and the resulting ToolResultMessage is
+        appended to the message history before the next turn.
+
+        Deliberate limitations, documented rather than emulated:
+        - **No cross-route fallback.** Switching provider mid-loop would change the semantics of a
+          conversation that already carries tool messages, so a transport failure raises
+          `LLMUnavailable` instead. Only `complete_structured` (the no-tools path) fails over.
+        - **No `response_format` in tool mode.** The final answer is validated locally instead.
+        - **Tools are opt-in per route.** A route without `supports_tools` raises `LLMToolUnsupported`;
+          tools are never silently dropped and the request is never downgraded to a normal one.
+        """
+        if isinstance(tools, (str, bytes)) or not isinstance(tools, (list, tuple)):
+            raise ToolDefinitionError(f"tools: expected a sequence of tool definitions, "
+                                      f"got {type(tools).__name__}")
+        if not tools:
+            raise ToolDefinitionError("tools: must not be empty")
+        # Accept either already-built ToolDefinition objects or plain mappings, in a list or a tuple.
+        if all(isinstance(item, ToolDefinition) for item in tools):
+            definitions = tuple(tools)
+        else:
+            definitions = ToolDefinition.from_mapping(tools)
+        choice = tool_choice_payload(tool_choice, definitions)
+        route = self.primary
+        if not route.supports_tools:
+            raise LLMToolUnsupported(
+                f"route {route.role} ({route.provider}/{route.model}) is not enabled for tool calling; "
+                f"set LLM_{route.role.upper()}_TOOLS=1 once tool support has been measured for it",
+                error_class="TOOL_UNSUPPORTED")
+        limit = self.max_tool_turns if max_turns is None else max_turns
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            # Report the value actually validated, not the parameter: when max_turns is omitted the
+            # parameter is None and would have misreported a bad router default as "got None".
+            raise ToolDefinitionError(f"max_turns: expected a positive integer, got {limit!r}")
+
+        messages: list[dict] = [{"role": "user", "content": prompt}]
+        known = {d.name for d in definitions}
+        attempts: list[dict] = []
+        all_calls: list[ToolCall] = []
+        all_results: list[ToolResultMessage] = []
+
+        for turn in range(1, limit + 1):
+            message, record = self._tool_turn(route, messages, definitions, choice)
+            attempts.append(record)
+            if record.get("error_class"):
+                raise self._tool_error(route, record, attempts)
+
+            calls = message.get("tool_calls") or ()
+            if not calls:
+                data, problem = extract_json({"choices": [{"message": message}]}, schema)
+                problems = ([problem] if data is None else validate(data, schema)) or \
+                           (check(data) if check else [])
+                if problems:
+                    raise StructuredOutputError(
+                        "tool loop ended with output that failed validation: " + "; ".join(problems)[:300],
+                        error_class="INVALID_OUTPUT", attempts=attempts)
+                return ToolLoopResult(
+                    result=StructuredResult(data, route.provider, route.model, False, attempts),
+                    turns=turn, tool_calls=tuple(all_calls), tool_results=tuple(all_results))
+
+            try:
+                parsed = parse_tool_calls(message, known)
+            except ToolCallError as exc:
+                raise LLMToolCallInvalid(f"provider returned a malformed tool call: {exc}",
+                                         error_class="INVALID_TOOL_CALL", attempts=attempts) from exc
+            all_calls.extend(parsed)
+            messages.append({"role": "assistant", "content": message.get("content"),
+                             "tool_calls": [
+                                 {"id": c.call_id, "type": "function",
+                                  "function": {"name": c.name, "arguments": c.arguments}}
+                                 for c in parsed]})
+            for call in parsed:
+                result = execute_tool(call)
+                if not isinstance(result, ToolResultMessage):
+                    raise ToolCallError(
+                        f"execute_tool returned {type(result).__name__} for call {call.call_id!r}; "
+                        "a ToolResultMessage is required")
+                all_results.append(result)
+                messages.append(result.to_message())
+
+        raise LLMToolTurnLimit(
+            f"tool loop reached max_turns={limit} without a final answer "
+            f"({len(all_calls)} tool call(s) observed)",
+            error_class="TOOL_TURN_LIMIT", attempts=attempts)
+
+    def _tool_turn(self, route: Route, messages: list[dict], definitions, choice) -> tuple[dict, dict]:
+        """One provider round trip in tool mode. Returns the assistant message and an attempt record."""
+        payload = {
+            "model": route.model,
+            "messages": [dict(m) for m in messages],
+            "max_tokens": self.max_tokens,
+            "tools": [d.to_payload() for d in definitions],
+            "tool_choice": choice,
+            **PROVIDER_OPTIONS[route.provider],
+        }
+        record = {"route": route.role, "provider": route.provider, "model": route.model}
+        started = time.perf_counter()
+        message, error_class, detail = {}, None, ""
+        try:
+            status, text = self.transport(f"{route.base_url}/chat/completions", route.api_key,
+                                          payload, route.timeout_s)
+        except TimeoutError:
+            error_class, detail = "TIMEOUT", f"no response within {route.timeout_s:g}s"
+        except OSError as exc:
+            error_class, detail = "UNREACHABLE", type(exc).__name__
+        else:
+            record["status"] = status
+            try:
+                body = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                body = None
+            error_class = classify_status(status, body)
+            if error_class:
+                detail = (text or "")[:200]
+            else:
+                choices = (body or {}).get("choices")
+                if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                    error_class, detail = "BAD_RESPONSE", "no choices"
+                else:
+                    candidate = choices[0].get("message")
+                    if not isinstance(candidate, dict):
+                        error_class, detail = "BAD_RESPONSE", "message was not an object"
+                    else:
+                        message = candidate
+        record.update(outcome="error" if error_class else "served", error_class=error_class,
+                      detail=detail, ms=int((time.perf_counter() - started) * 1000))
+        log.log(logging.INFO if not error_class else logging.WARNING,
+                "llm-tools %s provider=%s model=%s outcome=%s error_class=%s ms=%s",
+                route.role, route.provider, route.model, record["outcome"], error_class, record["ms"])
+        return message, record
+
+    def _tool_error(self, route: Route, record: dict, attempts: list[dict]):
+        error_class = record.get("error_class")
+        if error_class in AUTH_CLASSES:
+            return LLMAuthError(f"tool loop: {route.role} ({route.provider}) rejected the credentials",
+                                error_class=error_class, attempts=attempts)
+        if error_class == "BAD_RESPONSE":
+            return LLMUnavailable(f"tool loop: {route.role} returned an unusable response: "
+                                  f"{record.get('detail', '')}", error_class=error_class, attempts=attempts)
+        return LLMUnavailable(f"tool loop: {route.role} ({route.provider}) could not serve the request: "
+                              f"{error_class}", error_class=error_class, attempts=attempts)

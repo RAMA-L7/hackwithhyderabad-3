@@ -139,6 +139,31 @@ Governance, already enforced structurally in P1 and carried into P2:
 - Enforcement must be structural, not advisory — the same "absent channel, not a prompt" discipline
   the codebase already applies in `evidence.py`.
 
+#### Known limitation (P2): no resource limits on tool payloads
+
+Recorded from the P2 read-only boundary review. In P2 the following are **currently unbounded**:
+
+- the number of tool calls the provider may return in a single assistant turn;
+- the size of a tool call's `arguments`;
+- the size of a tool result's `content`;
+- the accumulated conversation history, which re-sends every prior turn on each request.
+
+`max_tool_turns` (default 4) bounds **turns only**. It does not bound bytes, and it does not bound the
+tool-call count within a turn. A single P2 tool loop has therefore been observed to build a
+multi-hundred-kilobyte request without raising, and an oversized request would surface as an opaque
+provider error rather than a typed failure.
+
+**This is intentionally not solved in P2.** P2 is transport shape and validation only; it has no
+knowledge of what a tool returns, so any limit placed here would be a guess. No numeric ceiling is
+recorded in this ADR on purpose.
+
+The real host and tool-execution layer must establish resource limits before any worker is executed —
+at minimum a cap on tool calls per turn, a cap on tool-result content size, and a cap on total
+conversation size. Per the phase table that belongs with **P3** (resource and concurrency hardening) and
+must be in place before **P4** (the first real worker) or **P5** (parallel fan-out, which multiplies
+the payload by the number of concurrent workers). Until then, tool payloads are unbounded and this
+limitation is knowingly accepted.
+
 ### Agent Definition Payloads
 
 Each approved worker carries exactly four architectural fields and no others:
