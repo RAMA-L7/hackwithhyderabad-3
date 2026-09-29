@@ -1,0 +1,5 @@
+# Act 3: history that disagrees with itself.
+description: orders-api large payloads are rejected by the proxy with 502
+measurements: payloads above 2MB return 502
+environment:
+  service: orders-api

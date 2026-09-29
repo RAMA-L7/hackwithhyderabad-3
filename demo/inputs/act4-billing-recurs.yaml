@@ -1,0 +1,9 @@
+# Act 4: Act 1's issue comes back; the case learned live in Act 1 should be recalled.
+description: |
+  billing-service creates duplicate invoice rows after the nightly job retries
+measurements:
+  - 3 duplicate invoices after one retried run
+environment:
+  service: billing-service
+  runtime: python3.11
+  region: eu-west-1

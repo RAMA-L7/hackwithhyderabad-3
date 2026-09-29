@@ -1,0 +1,9 @@
+# Act 1: a new issue with no matching history.
+description: |
+  billing-service writes duplicate invoices when the job is retried
+measurements:
+  - 2 invoice rows per retried job; single runs write 1 row
+environment:
+  service: billing-service
+  runtime: python3.11
+  region: eu-west-1
