@@ -44,6 +44,282 @@ A recalled case is never evidence and never satisfies a verification requirement
 
 ***
 
+## Architecture Evolution
+
+This project started as a **Phase 1 Engineering Debugging Agent** and is being evolved toward a
+**Hub-and-Spoke Multi-Agent Coordinator** architecture.
+
+The governing principle is unchanged from Phase 1:
+
+```
+MEMORY informs · EVIDENCE verifies · AGENT proposes · ENGINEER decides
+```
+
+The architecture deliberately keeps these four authorities **separate**. A recalled case informs; it
+never verifies. A tool reading the current repository verifies; it never decides. An agent proposes;
+it never signs off. The engineer decides.
+
+**This is a work in progress, not a finished multi-agent runtime.** The sections below distinguish
+what is *implemented*, what has been *audited or experimentally validated*, and what is *planned*.
+The multi-agent topology is the target design — **workers do not currently execute, and there is no
+Coordinator runtime or parallel fan-out today.**
+
+The architecture decision is recorded in
+[docs/adr-001-hub-spoke-coordinator.md](docs/adr-001-hub-spoke-coordinator.md).
+
+### Current Phase 1 flow (implemented and running)
+
+```
+Input
+  ↓
+Normalize
+  ↓
+Memory Recall
+  ↓
+Current Engineering Facts
+  ↓
+Hypothesis Generation
+  ↓
+Engineer Decision
+  ↓
+Retention
+```
+
+This is the flow described in [What one session does](#what-one-session-does), and it is what the CLI
+executes today.
+
+### Planned hub-and-spoke topology (not yet implemented)
+
+```
+                    ┌─────────────────────┐
+                    │     Coordinator     │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ↓                ↓                ↓
+       Memory Specialist   Code/Log Verifier  Patch Generator
+              │                │                │
+              ↓                ↓                ↓
+          Hindsight        Read/Grep/Glob     Read/Diff
+              │                │                │
+              └────────────────┴────────────────┘
+                               ↓
+                         Coordinator
+                               ↓
+                         Agent Proposal
+                               ↓
+                         Engineer Decision
+```
+
+Read this diagram as the **planned** target. It is not a claim that the three workers already run,
+and not a claim that they run in parallel. Today the Coordinator can only *specify* and
+*authorize* a task; it cannot yet execute one, and no worker process is started.
+
+### Agent definition payload
+
+Every agent is declared with exactly four fields, and no more:
+
+| Field            | Purpose                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| `description`    | What this agent is for and when the Coordinator should use it |
+| `prompt`         | The agent's standing instructions                          |
+| `allowed_tools`  | The complete set of tools it may use — nothing else        |
+| `model`          | Which LLM route it uses                                    |
+
+The planned worker roster, as currently declared in the registry:
+
+| Worker                | `allowed_tools`                                        | `model`  |
+| --------------------- | ------------------------------------------------------ | -------- |
+| **Memory Specialist** | `hindsight_recall`, `hindsight_get_facts`               | `primary` |
+| **Code/Log Verifier** | `read`, `grep`, `glob`                                 | `primary` |
+| **Patch Generator**   | `read`, `diff`                                         | `primary` |
+
+Workers are intentionally **capability-scoped**: a worker's tool list is the whole of its authority,
+and the registry re-checks every requested tool against it. A worker cannot use a tool it was not
+granted, and no worker can spawn further workers.
+
+**Anti-recursion boundary:**
+
+```
+Coordinator → Worker        (permitted, depth 1)
+Worker      → no recursive worker delegation
+```
+
+The `task` tool is **coordinator-only**. A worker declaring it in `allowed_tools` is rejected at
+registration time, and `max_spawn_depth` is fixed at 1. Delegation depth cannot grow.
+
+### Implementation status
+
+| Area                                            | Status        |
+| ----------------------------------------------- | ------------- |
+| Architecture decision / ADR                     | Implemented   |
+| Agent task definitions                          | Implemented   |
+| Worker registry / authorization                 | Implemented   |
+| Anti-recursion controls                        | Implemented   |
+| Context isolation structures                   | Implemented   |
+| LLM tool-calling seam                          | Implemented   |
+| Tool turn bounding                             | Implemented   |
+| Hindsight concurrency hardening                | Implemented   |
+| Deterministic concurrency regression tests     | Implemented   |
+| Remote Hindsight idempotency experiment        | Validated     |
+| Remote idempotent retention integration        | Not yet implemented |
+| VLSI engineering workers                       | Planned       |
+| Coordinator execution                          | Planned       |
+| Parallel worker fan-out                        | Planned       |
+
+### Test status
+
+```
+349 tests passed
+9 skipped
+```
+
+The Hindsight-dependent tests skip unless `HINDSIGHT_URL` is set. P3-0/P3-1 added **deterministic**
+concurrency regression coverage: these use barriers and events rather than sleeps, and the concurrency
+suite has been verified to fail against the pre-fix implementation and pass after it.
+
+This is a test status for the implemented layers only. **The multi-agent runtime is not tested,
+because it does not exist yet** — there is no Coordinator execution, no worker execution and no
+fan-out to test.
+
+### Hindsight reliability
+
+**P3-1 — local concurrency (implemented).** The idempotency ledger previously had no synchronization
+at all, so concurrent retains could lose local updates and write the same case to Hindsight twice.
+The fix is a **process-local lock keyed on the ledger's resolved path** — not on the instance —
+because a new store (and therefore a new ledger) is constructed on every `build_port()` call, so two
+instances on one ledger file must share one lock.
+
+- Concurrent ledger updates are protected against lost updates.
+- Same-case concurrent retention is serialized, producing exactly one remote write.
+- The ledger is re-read before the duplicate check, so a second store sees the first store's write.
+- **`recall()` does not acquire the ledger lock.** It touches no ledger state, and locking it would
+  serialize reads for no correctness gain.
+- The synchronization is **process-local**. It does not coordinate separate processes.
+
+**What this does not provide:** it does **not** provide distributed exactly-once semantics. A lock
+cannot make a remote write and a local write atomic together.
+
+**P3-2C — remote capability experiment (validated, not integrated).** A live experiment against an
+isolated test bank established:
+
+- Hindsight `document_id` is a **real server-side identity**: stored units are retrievable by it, and
+  distinct ids do not interfere.
+- `update_mode="replace"` produces **one** remote document for repeated writes sharing a
+  `document_id` — confirmed across 1, 2, 3, 4 and 6 writes, with both identical and differing content.
+  (An `append` control was used to confirm the measurement could detect accumulation.)
+- Repeating the same `document_id` **after an ambiguous outcome** is state-idempotent: when a write
+  succeeded remotely but the caller could not tell, retrying the same `document_id` did **not** create
+  a second remote document.
+
+**Important limitation:** `replace` is **destructive**. Writing two genuinely different cases under
+one `document_id` caused the first case's extracted facts to be **completely overwritten** in the
+experiment. This is a real data-loss risk whenever a `document_id` is reused across distinct cases.
+
+Therefore
+
+```
+document_id = case_key  +  update_mode = "replace"
+```
+
+has **not** been integrated. The prerequisite is a **case-identity and keying audit** — specifically,
+confirming that the case key is specific enough that two distinct cases can never share it. A 16-hex
+collision is not the concern; an over-broad key is.
+
+### A constraint on future parallel fan-out
+
+The live experiment also produced a directly relevant observation: **concurrent calls to the
+synchronous Hindsight retain path were not safe under ordinary Python threads** in the tested
+configuration — concurrent retains raised
+`RuntimeError: Timeout context manager should be used inside a task` from the client's synchronous
+facade.
+
+This is scoped deliberately. It describes the tested client (`hindsight-client` 0.10.1) and the tested
+synchronous code path only. It is **not** a claim that the Hindsight service is globally thread-unsafe,
+and it is not a claim about every configuration or about the async API.
+
+It is, however, an important constraint: a future parallel fan-out cannot assume one shared
+synchronous client is safe across workers, and the client question is a live follow-up before
+parallel worker execution.
+
+### Implementation roadmap
+
+```
+P0  Architecture decision
+    ↓
+P1  Agent delegation seam
+    ↓
+P2  LLM tool-calling seam
+    ↓
+P3  Memory/reliability hardening
+    ↓
+Case identity audit
+    ↓
+Remote state-idempotent retention
+    ↓
+VLSI engineering capabilities
+    ↓
+Memory Specialist
+    ↓
+Code/Log Verifier
+    ↓
+Patch Generator
+    ↓
+Coordinator execution
+    ↓
+Parallel worker fan-out
+    ↓
+Multi-agent VLSI debugging workflows
+```
+
+This is an **implementation roadmap, not a statement that every stage is complete.** P0 through P3
+are done. The case identity audit is the immediate next step, because remote state-idempotent
+retention is unsafe to adopt before it.
+
+### Planned VLSI engineering direction
+
+The intended future workers target VLSI engineering workflows, including:
+
+- SDC analysis and repair
+- Constraint verification
+- Timing and debug evidence
+- Synthesis and STA investigation
+- Place-and-route related analysis
+- Log and code inspection
+- Patch proposal
+
+**These VLSI-specific capabilities are planned next and are not yet part of the implemented
+multi-agent runtime.** No VLSI worker exists, and no VLSI execution has been started.
+
+The trust hierarchy is unchanged by any of it:
+
+```
+Memory           → contextual information
+Evidence / tools → verification
+Agent            → proposal
+Engineer         → final decision
+```
+
+A patch proposal is never a sign-off. No agent authorizes an engineering change.
+
+### Architectural guarantees
+
+- **Authority separation.** Proposal ≠ evidence ≠ knowledge ≠ authorization. Each of the four is a
+  distinct thing and is never substituted for another.
+- **Worker capability isolation.** A worker's authority is exactly its `allowed_tools`, re-checked at
+  authorization time rather than trusted at declaration time.
+- **No arbitrary recursive delegation.** `Coordinator → Worker` only, with `max_spawn_depth` 1 and a
+  coordinator-only `task` tool.
+- **Memory cannot become evidence.** A recalled case informs hypothesis ranking and never satisfies a
+  verification requirement.
+- **Memory cannot authorize an engineering action.** Retention decisions gate nothing; they are
+  reported, not enforced.
+- **Deterministic engineering tools remain authoritative for verification.** Repository reads and
+  diffs describe the current state; they are not opinions.
+- **Agent output remains a proposal**, and the engineer remains the final decision authority.
+
+***
+
 ## Current Candidate Ideas
 
 | # | Idea                                   | One-Line Concept                                                                                       |
@@ -170,6 +446,7 @@ decides.** A recalled case is never evidence and never satisfies a verification 
 | [docs/phase1-execution-plan.md](docs/phase1-execution-plan.md) | Implementation tree + M0–M8 sequence (Sept 29) |
 | [docs/phase1-mukul-plan.md](docs/phase1-mukul-plan.md) | Mukul-side milestones MK0–MK9 + contract gaps |
 | [docs/phase1-mukul-m0-plan.md](docs/phase1-mukul-m0-plan.md) | MK0 runtime verification (providers, schema, drift) |
+| [docs/adr-001-hub-spoke-coordinator.md](docs/adr-001-hub-spoke-coordinator.md) | ADR: Hub-and-Spoke Coordinator pattern, trust hierarchy, migration phases |
 
 ***
 
