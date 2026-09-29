@@ -9,6 +9,10 @@ description = "Memory-driven engineering investigation agent (Phase 1)"
 requires-python = ">=3.10"
 dependencies = [
     "hindsight-client==0.10.1",
+    # Required by `debug --input FILE` to read the .yaml issue files in demo/inputs/.
+    # A lower bound rather than an exact pin: PyYAML's load API is stable, and an
+    # exact pin would needlessly conflict with other packages in the same environment.
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

@@ -1,5 +1,5 @@
-# HackwithHyderabad 3.0 - Pre-Planning Repository
-# .gitignore for planning docs only (no implementation yet)
+# Debugging Knowledge Agent (built on Hindsight)
+# Python project: src/ + tests/, plus M0/MK0 probe scripts.
 
 # OS / Editor
 .DS_Store

@@ -12,7 +12,7 @@ counts as evidence.* No speed, accuracy or improvement numbers anywhere, on scre
 |---|---|---|---|
 | 1 · Before | `act1-billing.yaml` | New issue, **no usable memory**, generic proposal, engineer resolves, **case retained** | Hindsight: memory starts empty for this issue |
 | 2 · Recall | `act2-media-uploader.json` | Past case recalled **with its original environment and "Failed before"**; H1 leads with the recorded fix | Innovation, Hindsight |
-| 3 · Disagreement | `act3-orders.yaml` | Two past cases disagree: **shown side by side, never resolved**; nothing verified without current facts | Trust, Innovation |
+| 3 · Disagreement | `act3-orders.yaml` | The bank holds **conflicting history** for this service; it is surfaced and the agent **never resolves it**. Nothing is verified without current facts | Trust, Innovation |
 | 4 · Learning curve | `act4-billing-recurs.yaml` | Act 1's issue returns: **the case learned minutes ago** is recalled and cited, with its fix and failed approach | **Before/after on the same task** (organizers' key moment) |
 
 Act 1 → Act 4 is the before/after on the same issue. Close by saying so.
@@ -42,15 +42,31 @@ open a new shell and start step 6 again with a new bank (never record on a bank 
 
 ## 3. Exact answers for every prompt
 
-The CLI asks for each hypothesis in turn. Answers are the same in every act:
+**The CLI does not ask the same questions in every act.** Two of the per-hypothesis prompts are
+conditional, so type the answer for the prompt that is actually on screen — if a prompt is not
+shown, send nothing and wait for the next one.
 
-| Prompt | Type |
-|---|---|
-| `Add current facts as name=value … (blank line to continue)` | **Enter** |
-| `Does current evidence support or contradict it?` | `supported` |
-| `Is the cited past case relevant to this issue?` | `y` |
-| `Your decision [accept/modify/reject]` | `accept` |
-| `Note (optional)` | **Enter** |
+| Prompt | Appears | Answer |
+|---|---|---|
+| `Add current facts as name=value, or a plain sentence for an observation. … (blank line to continue)` | always, once per session | **Enter** |
+| `Verify H1: <hypothesis>` (header) | always, per hypothesis | read only |
+| `Does current evidence support or contradict it?` [supported/contradicted] | **only when current evidence is complete.** Skipped when the CLI prints `current evidence lacks: …` | `supported` |
+| `Is the cited past case relevant to this issue?` [y/n] | **only when that hypothesis cites a case.** Skipped for a hypothesis that cites nothing | `y` |
+| `Your decision` [accept/modify/reject] | always, per hypothesis | `accept` |
+| `Note (optional)` | always, per hypothesis | **Enter** |
+
+What to expect per act:
+
+| Act | Support/contradict prompt | Cited-case relevance prompt |
+|---|---|---|
+| 1 · billing | asked | **skipped** — memory abstained, so no hypothesis cites a case |
+| 2 · media-uploader | asked | asked (H1 cites the past case) |
+| 3 · orders-api | **skipped** — `act3-orders.yaml` states only `service`, so the CLI prints `current evidence lacks: …` and sets `insufficient_evidence` itself | asked, for hypotheses that cite a conflicting case |
+| 4 · billing recurs | asked | asked (H1 cites the case from Act 1) |
+
+The number of `Verify` rounds is whatever the LLM returned — two or three hypotheses in the
+dress rehearsal. Answer each round the same way; if a prompt you expected is missing, that is the
+CLI behaving correctly, not a fault (§5).
 
 Resolution answers (after `Did you resolve the issue? [y/n]`):
 
@@ -85,8 +101,8 @@ them to 1–2 s in editing.
 | 2d | answers §3 | EVIDENCE / DECISION | "The past case is a suggestion. Only today's facts verify it, and I decide." | EVIDENCE section; `past case relevance confirmed by engineer: yes` |
 | 2e | end (Act 2 ≈ 12 s) | RETENTION | "Retained." | `memory id:` |
 | 3a | 2:10 | `… --input demo/inputs/act3-orders.yaml` | "What if history disagrees with itself?" | — |
-| 3b | +5 s | MEMORY | "Two past orders-api cases: same symptom, different root causes. Both are shown, each naming the other. The agent doesn't pick one." | two `[contradictory]` lines, `conflicts with` |
-| 3c | +~10 s | PROPOSAL / DECISION | "Hypotheses that lean on either side are marked as disputed, and without today's facts neither can be verified." | `memory-backed · past cases disagree`, `insufficient evidence` |
+| 3b | +5 s | MEMORY | "The bank holds two past orders-api cases: same symptom, different root causes. The conflict is surfaced, and the agent doesn't pick a side. How many appear as candidates depends on the scores." | the conflicting case(s) and their `conflicts with` — **not a fixed count of lines** |
+| 3c | +~10 s | PROPOSAL / DECISION | "Hypotheses that lean on a conflicting case are marked as disputed, and without today's facts neither side can be verified." | `memory-backed · past cases disagree`, `insufficient_evidence` |
 | 3d | end (Act 3 ≈ 13 s) | answer `n` | "Not resolved, so nothing is written to memory." | `Nothing retained` |
 | 4a | 2:45 | `… --input demo/inputs/act4-billing-recurs.yaml` | "Now the billing duplicates come back, a few minutes later." | — |
 | 4b | +5 s | MEMORY | "This time memory has the case it learned in the first run: the root cause, the fix, and the approach that failed." | `[relevant] case …`, `Failed before: wrapped the insert in a transaction` |
@@ -111,7 +127,9 @@ Record **two complete takes on two different banks**; keep the better one, the o
 ## 6. Editing
 
 - Cut LLM waits to 1–2 s; never cut a section's content or the provider header.
-- Title card (0:00): project name, "HackwithHyderabad 3.0 · built on Hindsight".
+- Title card (0:00): project name and one line on what it does, e.g. *"A debugging agent that remembers
+  past incidents — built on Hindsight"*. Keep the event name off the title; it can appear in the video
+  description and in the repo link.
 - Lower-third per act: *Act 1 · no memory* · *Act 2 · recall* · *Act 3 · disagreement* · *Act 4 · learning curve*.
 - Zoom (1.5×) on the "Point at" lines in §4.
 - End card: repo URL, the four-line trust rule, team names.
@@ -120,6 +138,10 @@ Record **two complete takes on two different banks**; keep the better one, the o
 ## 7. What not to say or show
 
 - No numbers about speed, accuracy or improvement; no "the threshold is 0.75" (thresholds are provisional).
+- Don't promise a count of Act 3 candidate lines, and don't call 0.75 a validated threshold. Both are
+  documented as provisional in `docs/phase1-demo-scenario.md` and `docs/m1-contract.md`; if a judge
+  asks, say the floors are calibration parameters measured on a six-case bank, and that Act 4's
+  genuine match is accepted on `final` rather than on the fallback.
 - Don't call the data real: the services are fictional, the incidents are synthetic but realistic.
 - Don't say the agent "fixes" anything: it proposes; the engineer decides and acts.
 - Don't show `.env.live`, API keys, or the Hindsight URL.

@@ -1,35 +1,46 @@
-# HackwithHyderabad 3.0 — Pre-Planning Repository
+# Debugging Knowledge Agent — built on Hindsight
 
-**Status:** Project selected — Engineering Debugging Agent (implementation not started)\
-**Hackathon:** HackwithHyderabad 3.0\
-**Required Technology:** [Hindsight by Vectorize](https://hindsight.vectorize.io/)\
-**Team:** 2 members (see [Team Status](#team-status))\
-**Purpose:** Shared planning documentation for team discussion before implementation
+**Status:** Phase 1 implemented and merged into `main`\
+**Memory layer:** [Hindsight by Vectorize](https://hindsight.vectorize.io/)\
+**Team:** Rama Krishna Ketha, Mukul Rai · [Team Status](#team-status)
 
-***
+A command-line debugging assistant for a single engineer. It recalls past debugging cases from
+Hindsight, proposes hypotheses in one LLM call, makes the engineer verify them against current
+evidence, and retains the verified outcome — including what failed — for the next similar issue.
 
-## Purpose of This Repository
+```
+MEMORY informs · EVIDENCE verifies · AGENT proposes · ENGINEER decides
+```
 
-This repository contains structured pre-planning documents to help the team:
+A recalled case is never evidence and never satisfies a verification requirement. Commands are in
+[Run the Phase 1 agent](#run-the-phase-1-agent); the full loop is in
+[docs/phase1-implemented.md](docs/phase1-implemented.md).
 
-* Understand hackathon requirements and constraints
+## What one session does
 
-* Evaluate five candidate project ideas objectively
+1. **Normalize** the engineer's description deterministically (service, runtime, proxy, region).
+2. **Recall** similar past cases from a Hindsight bank and classify each one — `relevant`,
+   `partial`, `contradictory`, `irrelevant` or `stale` — or abstain with a stated reason.
+3. **Collect current evidence** from the engineer, and only from the engineer.
+4. **Propose** ranked hypotheses in one structured LLM call. A hypothesis may cite only a case that
+   was actually recalled.
+5. **Verify** — the engineer decides each hypothesis against current evidence.
+6. **Retain** the outcome, including failed approaches, when the engineer reports a resolution.
 
-* Compare ideas against judging criteria and technical feasibility
+## How Hindsight is used
 
-* Align on system-design principles before writing code
-
-* Plan demo narratives for each candidate
-
-* Track decisions, assumptions, and open questions
-
-**Important:** The team has selected Idea 1 — the Engineering Debugging Agent with persistent
-memory using Hindsight (decided 2026-09-27 by Rama Krishna Ketha and Mukul Rai; see
-[docs/decision-log.md](docs/decision-log.md)). Implementation has not started yet — the
-repository is in architecture and implementation-planning phase. Full definition:
-[docs/final-project-definition.md](docs/final-project-definition.md). The remaining four ideas
-stay documented for reference.
+- **Retain / recall.** Each resolved investigation is stored as one case in a Hindsight bank, and
+  recalled by query when a similar issue comes up.
+- **Fact extraction.** Hindsight turns retained case text into separate facts — symptom, root cause,
+  fix, failed approach. The store collapses those per-fact rows back into one entry per case and
+  keeps every distinct fact, because the best-scoring row is usually only the symptom.
+- **Verbatim metadata.** Environment values and `failed_approaches` are written to Hindsight metadata
+  verbatim and re-attached at recall as `Failed before: …`, because LLM fact extraction does not
+  reliably keep them.
+- **Application-side abstention.** Hindsight returns scores; the decision to act on a recalled case is
+  made in this codebase. `final` is query-relative, so it decides ordering, and `semantic` may only
+  admit a case when `final` has collapsed. These thresholds are calibration parameters, not
+  validated constants.
 
 ***
 
@@ -88,6 +99,11 @@ Background: To be documented after discussion
 The pipeline is integrated on `integration/phase1`. It is stdlib-only apart from `hindsight-client`.
 
 ```bash
+# 0. dependencies. Both are declared in pyproject.toml; pyyaml is what
+#    `debug --input FILE` needs to read the .yaml issue files in demo/inputs/,
+#    and without it those files fail with "YAML input needs PyYAML".
+python3 -m pip install "hindsight-client==0.10.1" pyyaml
+
 # 1. credentials: HINDSIGHT_URL / HINDSIGHT_API_KEY / HINDSIGHT_BANK_ID, and the LLM_* pair
 cp .env.example .env          # then fill it in; .env is git-ignored
 

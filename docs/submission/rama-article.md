@@ -75,12 +75,16 @@ I didn't want to pick a new number by feel, so we collected every semantic score
 |---|---|
 | Unrelated | 0.641, 0.678, 0.7016, 0.7084 |
 | Vague question | 0.766 |
+| Low-information synthetic self-match | 0.736, 0.739, 0.746 |
 | Genuine match, `final` collapsed | 0.78, 0.788 |
 
-A floor of 0.75 rejects every unrelated case and keeps every genuine one. It's now configurable
-(`DEBUGAGENT_SEMANTIC_FLOOR`), and with it two end-to-end runs on new banks passed all four
-scenarios. I still call it provisional in the code and in the docs, because it rests on a handful of
-measurements, not a labelled evaluation set.
+A floor of 0.75 rejects every unrelated case I measured, including the two that got through at
+0.70. It does **not** keep every genuine match: the synthetic self-match in the third row was
+rejected too, and that is the honest cost of the number. Those rows are a handful of measurements,
+not a labelled evaluation set — so 0.75 is the *currently configured* policy, configurable through
+`DEBUGAGENT_SEMANTIC_FLOOR`, and still a provisional one. With it, two end-to-end runs on new banks
+passed all four demo scenarios. Turning it into a defensible threshold means a labelled calibration
+set per domain, which is the next thing I'd build.
 
 ## When history disagrees
 
@@ -88,11 +92,16 @@ Two past `orders-api` cases in our bank share the same symptom (large payloads f
 root causes: a proxy request-size limit, and an upstream dependency returning 502. Picking the
 higher-scoring one would be the agent resolving an argument it has no evidence for.
 
-So a conflict is defined as the same service with materially different root causes. Both sides are
-marked `contradictory`, each names the other, and if no side clearly leads, the layer abstains and
-explains the margin. "Materially different" needed its own rule. The root-cause key is derived text,
-and a live run stored a paraphrase of an existing cause, which the layer then reported as disagreeing
-with itself. Two causes that share enough of their content words are now treated as one:
+So a conflict is defined as the same service with materially different root causes. The cases in
+that conflict are marked `contradictory`, each names the other, and if no side clearly leads, the
+layer abstains and explains the margin. How many of them reach the engineer as *candidates* depends
+on the scores: on a fresh bank one side's `final` can collapse far enough that its `semantic` falls
+below the floor, and it is then shown as excluded rather than as a candidate. The layer still never
+picks a side — that is the part worth relying on, not the count.
+
+"Materially different" needed its own rule. The root-cause key is derived text, and a live run
+stored a paraphrase of an existing cause, which the layer then reported as disagreeing with itself.
+Two causes that share enough of their content words are now treated as one:
 
 ```python
 def same_cause(left: str, right: str, threshold: float) -> bool:
@@ -106,9 +115,9 @@ Contradictions are also limited to services the engineer actually named. A disag
 orders-api cases isn't actionable when you're debugging media-uploader, and reporting it there was
 just noise.
 
-On a live bank, the orders-api question shows both past cases side by side, each pointing at the
-other. Any hypothesis that leans on one side is labelled *past cases disagree*, and without current
-facts neither can be verified.
+On a live bank, the orders-api question surfaces that conflicting history, and each surfaced case
+points at the other. Any hypothesis that leans on one side is labelled *past cases disagree*, and
+without current facts neither side can be verified.
 
 ## What I'd tell someone starting
 
@@ -118,7 +127,7 @@ facts neither can be verified.
    collapsed `final` score silently drops a correct match.
 3. **Abstention needs a reason string.** "No usable memory" plus *why* is what makes an engineer trust
    the times it does recall something.
-4. **Treat disagreement as information.** Surfacing both sides with their conditions is more useful
+4. **Treat disagreement as information.** Surfacing a conflict with its conditions is more useful
    than any tie-break rule.
 5. **Fresh banks are not identical.** Hindsight extracts facts with an LLM at retain time, so two fresh
    banks seeded with the same six cases score slightly differently. Test on a new bank every time,

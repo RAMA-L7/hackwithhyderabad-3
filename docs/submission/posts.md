@@ -19,7 +19,7 @@ Building it on Hindsight agent memory taught me:
 
 → Hindsight stores a case as facts: symptom, root cause, fix, what failed. I kept only the best-scoring fact per case and threw the warning away.
 → Anything the agent can't lose goes in metadata, verbatim.
-→ A recalled case is a suggestion. Only today's facts verify it; a missing fact means "insufficient evidence".
+→ A recalled case is a suggestion. Only today's facts verify it; a missing fact means `insufficient_evidence`.
 → Before: new issue, "no usable memory". After: same issue minutes later, it recalls what fixed it and what failed.
 
 Code: https://github.com/RAMA-L7/hackwithhyderabad-3
@@ -40,8 +40,8 @@ Building the memory layer of a debugging agent on Hindsight agent memory taught 
 
 → Give each score one job: final for ordering, semantic only to admit a match when final collapses.
 → Abstain out loud: "no usable memory", plus why.
-→ Calibrate on data: unrelated cases scored 0.64–0.71, real ones 0.78+, so the floor moved from 0.70 to 0.75.
-→ When past cases disagree, show both. Never let the agent pick a side.
+→ Calibrate on data, and keep the sample honest: 0.70 let unrelated cases through at 0.70 and 0.71, so the floor is now 0.75 — provisional, not proven, and it costs one weak genuine match.
+→ When past cases disagree, surface the conflict. Never let the agent pick a side.
 → Before: unrelated incidents slipped in as "relevant". After: end-to-end runs on fresh banks pass.
 
 Code: https://github.com/RAMA-L7/hackwithhyderabad-3
@@ -81,7 +81,7 @@ Description:
 ```text
 A command-line debugging agent that remembers past incidents with Hindsight agent memory.
 
-In this walkthrough: a new issue with no usable memory, a recalled past case with its original environment and the approach that failed before, two past cases that disagree (shown side by side, never resolved by the agent), and the first issue coming back, now recalled and cited from what the agent learned minutes earlier.
+In this walkthrough: a new issue with no usable memory, a recalled past case with its original environment and the approach that failed before, conflicting past cases for one service (surfaced, never resolved by the agent — how many reach the screen as candidates depends on the scores), and the first issue coming back, now recalled and cited from what the agent learned minutes earlier.
 
 Memory informs. Evidence verifies. The agent proposes. The engineer decides.
 
