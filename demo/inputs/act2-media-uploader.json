@@ -1,0 +1,10 @@
+{
+  "description": "media-uploader resets connections on uploads over 2 MB behind nginx",
+  "measurements": ["20/20 uploads of 2.5MB fail with ECONNRESET; 1MB uploads succeed"],
+  "environment": {
+    "service": "media-uploader",
+    "runtime": "node20",
+    "proxy": "nginx-1.25",
+    "region": "us-east-1"
+  }
+}

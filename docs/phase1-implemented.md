@@ -49,6 +49,7 @@ recalled cases → the engineer **verifies** each against current evidence and d
 | `pipeline/types.py` | Mukul | `DebugInput`, `NormalizedDebugCase`, `Evidence`, `Hypothesis`, `VerificationResult`, `Resolution` |
 | `pipeline/memory_port.py` | Mukul | The seam: `MemoryPort` interface, `MemoryFailure`, boundary checks on every view and retention decision |
 | `pipeline/memory_adapter.py` | Rama (MK9) | Rama's store + `classify_candidates` behind the port; case text/outcome join; error mapping; drops `"unknown"` placeholders |
+| `pipeline/ingest.py` | Mukul | Structured issue input: a `.json` / `.yaml` file (`description`, `measurements`, `environment`) mapped onto the same `DebugInput` as typing; unknown fields rejected; YAML via optional PyYAML |
 | `pipeline/normalize.py` | Mukul | Deterministic normalizer; reads `service/runtime/proxy/region` as whole tokens from the description and measurements; conflicts fail closed |
 | `pipeline/recall_match.py` | Mukul | One recall per session; which cases may be cited; past-vs-current environment comparison |
 | `pipeline/evidence.py` | Mukul | Current evidence from the engineer only (source, time, known/unknown); no path for recalled content |
@@ -118,7 +119,8 @@ python3 -m pip install "hindsight-client==0.10.1"
 set -x HINDSIGHT_BANK_ID demo-(date +%s)                    # fresh bank for a recording
 set -x DEBUGAGENT_DATA_DIR /tmp/demo-ledger-$HINDSIGHT_BANK_ID  # and a fresh ledger
 env PYTHONPATH=src python3 -c "from debugagent.config import load_memory_config; from debugagent.memory.hindsight_store import HindsightMemoryStore; from debugagent.seeds.loader import load_seed_cases; s = HindsightMemoryStore(load_memory_config()); print(load_seed_cases(s).to_dict()); s.close()"
-env PYTHONPATH=src python3 -m debugagent.cli debug           # one session
+env PYTHONPATH=src python3 -m debugagent.cli debug           # one session, typed
+env PYTHONPATH=src python3 -m debugagent.cli debug --input demo/inputs/act2-media-uploader.json   # from a file
 env PYTHONPATH=src python3 -m debugagent.cli inspect         # trace of the last session
 env PYTHONPATH=src python3 -m unittest discover -s tests     # offline tests
 ```
@@ -131,3 +133,31 @@ env PYTHONPATH=src python3 -m unittest discover -s tests     # offline tests
 | `mukul/phase1-fixes` | 8 commits on top: dedupe, verbatim metadata, adapter placeholders, fallback robustness, CLI input, one-line errors, demo script, improvement plan |
 | `mukul-loop` | Mukul's layered refactor (controllers / services / domain / ports / adapters / views + architecture test), not yet integrated |
 | `rama-m0` | Rama's memory layer before integration |
+
+## 9. Structured issue input (29 Sept)
+
+`debug --input FILE` reads the issue from JSON or YAML instead of the first two prompts. It is an
+ingestion-layer change only: the file becomes the same `DebugInput` that typing produces, so memory,
+matching, thresholds, reasoning and verification are unchanged (no core file was modified). Verification
+and resolution stay interactive: the engineer still decides.
+
+```yaml
+description: |
+  media-uploader resets connections on uploads over 2 MB behind nginx
+measurements:
+  - 20/20 uploads of 2.5MB fail with ECONNRESET
+environment:
+  service: media-uploader
+  runtime: node20
+  proxy: nginx-1.25
+```
+
+- Examples for every demo act: `demo/inputs/` (`act1-billing.yaml`, `act2-media-uploader.json`,
+  `act3-orders.yaml`, `act4-billing-recurs.yaml`).
+- Fails closed with one-line messages: unknown or misspelt fields, missing description, `yes`/`null`
+  where text is expected, invalid JSON/YAML with the line number, unsupported extension.
+- A file's `environment` that contradicts its own text still stops at the existing normalizer rule.
+- JSON needs nothing extra; YAML needs `pip install pyyaml` (not a project dependency).
+- Verified: 14 tests (JSON and YAML give the identical normalized case; file input normalizes like typed
+  input), and live on a fresh Hindsight bank: Act 1 (YAML) abstains and retains, Act 2 (JSON) is
+  memory-backed, Act 4 (YAML) recalls and cites the case learned in Act 1.

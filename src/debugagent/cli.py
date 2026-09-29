@@ -19,6 +19,7 @@ from pathlib import Path
 
 from debugagent.llm import LLMError, LLMRouter
 from debugagent.pipeline.evidence import EvidenceError
+from debugagent.pipeline.ingest import load_debug_input
 from debugagent.pipeline.investigate import Session, investigate
 from debugagent.pipeline.memory_port import MemoryFailure, OfflineMemoryPort
 from debugagent.pipeline.normalize import InputError, NormalizationError
@@ -181,6 +182,8 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
     commands = parser.add_subparsers(dest="command", required=True)
     debug = commands.add_parser("debug", help="investigate one issue interactively")
     debug.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
+    debug.add_argument("--input", metavar="FILE",
+                       help="read the issue from a .json/.yaml file instead of the first two prompts")
     debug.add_argument("--memory", default=DEFAULT_MEMORY,
                        help="memory source: hindsight (default) or offline:<file>")
     commands.add_parser("inspect", help="print the trace of the last session")
@@ -214,7 +217,11 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         if port is None:
             port = make_port(args.memory, state)
             owns_port = True
-        raw = engineer.read_input()
+        if args.input:
+            raw = load_debug_input(args.input)
+            engineer.say(f"Issue loaded from {args.input}: {raw.description.splitlines()[0]}")
+        else:
+            raw = engineer.read_input()
         session = investigate(raw, port, llm, engineer, on_step=save)
     except KeyboardInterrupt:
         print("\naborted; nothing retained", file=err)
