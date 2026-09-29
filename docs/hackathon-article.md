@@ -240,3 +240,14 @@ Dark terminal screenshot, slightly angled, showing the two lines that carry the 
 `MEMORY informs · EVIDENCE verifies · AGENT proposes · ENGINEER decides`.
 High contrast, one short bold line of text — *"it remembered — then said no"* — in the lower third.
 No faces, no stock imagery, no robot iconography. The terminal is the subject.
+
+## G. Published submission links
+
+| Deliverable | Link |
+|---|---|
+| GitHub repository | <https://github.com/RAMA-L7/hackwithhyderabad-3/tree/main> |
+| LinkedIn post | <https://lnkd.in/p/gFmPf-QJ> |
+| LinkedIn article | <https://www.linkedin.com/pulse/why-debugging-agent-should-remember-experience-answers-ketha-dcgcc/> |
+| Medium article | <https://medium.com/@ramasketha14093/why-a-debugging-agent-should-remember-experience-not-answers-cc1ba83ad9be> |
+| YouTube demo video | <https://www.youtube.com/watch?v=rfSCCuqjzDI> |
+| Reddit post (r/LLMDevs) | <https://www.reddit.com/r/LLMDevs/s/6cfO496Lna> |
