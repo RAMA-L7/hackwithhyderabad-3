@@ -137,4 +137,4 @@ If agent memory is new to you, Vectorize's [overview of agent
 memory](https://vectorize.io/what-is-agent-memory) is a good starting point, and the [Hindsight
 documentation](https://hindsight.vectorize.io/) covers the retain and recall APIs this is built on.
 
-*Code: [repo link]. Built with Hindsight. Tagging Code.in.*
+*Read [the code on GitHub](https://github.com/RAMA-L7/hackwithhyderabad-3). Built with Hindsight. Tagging Code.in.*

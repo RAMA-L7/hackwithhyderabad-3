@@ -4,7 +4,7 @@ Rules from `docs/Submission.md`: never write the event name or the word for it a
 hashtags); no links or hashtags in the first two lines; the repo link goes in the main post; the article
 URL is the **first comment**; the Hindsight GitHub link is another comment; tag **Code.in**.
 
-Replace `[REPO_URL]` with the repository URL (see checklist §1 about its name) and `[ARTICLE_URL]` with
+Replace `https://github.com/RAMA-L7/hackwithhyderabad-3` with the repository URL (see checklist §1 about its name) and `[ARTICLE_URL]` with
 your published article.
 
 ## Mukul — LinkedIn post
@@ -22,7 +22,7 @@ Building it on Hindsight agent memory taught me:
 → A recalled case is a suggestion. Only today's facts verify it; a missing fact means "insufficient evidence".
 → Before: new issue, "no usable memory". After: same issue minutes later, it recalls what fixed it and what failed.
 
-Code: [REPO_URL]
+Code: https://github.com/RAMA-L7/hackwithhyderabad-3
 Thanks @Code.in
 #AIAgents #AgentMemory #Hindsight #LLM
 ```
@@ -44,7 +44,7 @@ Building the memory layer of a debugging agent on Hindsight agent memory taught 
 → When past cases disagree, show both. Never let the agent pick a side.
 → Before: unrelated incidents slipped in as "relevant". After: end-to-end runs on fresh banks pass.
 
-Code: [REPO_URL]
+Code: https://github.com/RAMA-L7/hackwithhyderabad-3
 Thanks @Code.in
 #AIAgents #AgentMemory #Hindsight #AIMemory
 ```
@@ -85,7 +85,7 @@ In this walkthrough: a new issue with no usable memory, a recalled past case wit
 
 Memory informs. Evidence verifies. The agent proposes. The engineer decides.
 
-Code: [REPO_URL]
+Code: https://github.com/RAMA-L7/hackwithhyderabad-3
 Hindsight: https://github.com/vectorize-io/hindsight
 Docs: https://hindsight.vectorize.io/
 ```

@@ -155,4 +155,4 @@ If you're building agents that are supposed to learn from past work, the [agent 
 primer from Vectorize](https://vectorize.io/what-is-agent-memory) is a good place to start, and the
 [Hindsight repository](https://github.com/vectorize-io/hindsight) has the client I used.
 
-*Code: [repo link]. Built with Hindsight. Tagging Code.in.*
+*Read [the code on GitHub](https://github.com/RAMA-L7/hackwithhyderabad-3). Built with Hindsight. Tagging Code.in.*

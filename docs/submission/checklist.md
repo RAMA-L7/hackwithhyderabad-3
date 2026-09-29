@@ -20,10 +20,9 @@ titles, body, comments, hashtags, video title and description. Check with
 
 ## 1. Decide first (5 minutes, both)
 
-1. **Repository name.** The posts must link the repo, and `github.com/RAMA-L7/hackwithhyderabad-3`
-   contains the event name. Renaming it (GitHub → Settings → Repository name, e.g.
-   `hindsight-debug-agent`) keeps the old URL redirecting and removes the risk. Only Rama, as owner,
-   can rename. Afterwards each of us runs `git remote set-url origin <new url>`.
+1. **Repository name: kept** as `https://github.com/RAMA-L7/hackwithhyderabad-3` (decided 29 Sept). The
+   repo name contains the event name, so keep it out of visible text where possible: the articles link it
+   as *"the code on GitHub"*; LinkedIn shows the URL as written, which is the accepted risk.
 2. **README.** It still opens with "Pre-Planning Repository … implementation not started". Judges read
    it first. Replace the top with: one-line description, the four-line trust rule, *How Hindsight is used*
    (retain/recall, fact extraction, verbatim metadata, app-side abstention), and the run commands from
@@ -42,7 +41,7 @@ For each author:
      (Cmd+Shift+4, PNG, cropped): Act 1 MEMORY *No usable memory*; Act 2 MEMORY with *Failed before*;
      Act 4 MEMORY + PROPOSAL (`memory-backed`, `cites:`). Rama: also Act 3 MEMORY (two `[contradictory]`).
    - Architecture: screenshot the diagram from the build map page or from `docs/phase1-implemented.md` §1.
-3. Replace `[repo link]` at the end with the repository URL.
+3. The closing line already links the repository as *"the code on GitHub"*; keep the event name out of the visible text.
 4. Publish publicly on Medium, Dev.to, Hashnode, Substack or LinkedIn Articles. Check that headings,
    code blocks and the three links render: Hindsight GitHub, Hindsight docs, Vectorize agent memory.
 5. Pre-submit checklist from the guide:
@@ -61,8 +60,7 @@ For each author:
 
 ## 3. LinkedIn (after the article is live)
 
-1. Copy your post from `posts.md`; replace `[REPO_URL]`. Keep it under 800 characters: shorten a bullet
-   if the real URL pushes it over.
+1. Copy your post from `posts.md` (the repository URL is already in). It is under 800 characters; keep it there.
 2. Type `@Code.in` and pick the company so the tag is real.
 3. Publish. Then **first comment**: the article URL. **Second comment**: the Hindsight GitHub link.
 
@@ -91,7 +89,7 @@ subreddit's self-promotion rules first.
 | Email ID / Phone | the submitter's |
 | Team name | as registered |
 | Team members | Rama Krishna Ketha, Mukul Rai |
-| GitHub repository | repository URL (after §1.1) |
+| GitHub repository | https://github.com/RAMA-L7/hackwithhyderabad-3 |
 | Social media post on LinkedIn | both post URLs |
 | Article link | both article URLs |
 | Video link | the YouTube URL |
@@ -105,7 +103,7 @@ comma-separated. Confirm with Rama that you both agree before submitting: only o
 
 | Step | Who | Needs |
 |---|---|---|
-| 1. Decide repo name and README (§1) | both | — |
+| 1. README top and who submits (§1) | both | — |
 | 2. Profile review forms | each | — |
 | 3. Record the video (§5) | Mukul (Rama reviews) | fresh bank |
 | 4. Screenshots from the recording session | each | step 3 |
