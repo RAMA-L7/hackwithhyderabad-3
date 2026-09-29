@@ -7,6 +7,7 @@ from dataclasses import replace
 import json
 import os
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -115,12 +116,49 @@ def render_content(case: MemoryCase) -> str:
 
 
 class Ledger:
-    """Application-level idempotency record. Hindsight retain is not documented as idempotent."""
+    """Application-level idempotency record. Hindsight retain is not documented as idempotent.
+
+    Thread safety (P3-1): all mutable state and the file write are guarded by a lock that is
+    *keyed on the ledger path*, not on the instance. A per-instance lock would not help, because
+    the normal construction path (`build_port()`) creates a fresh store -- and therefore a fresh
+    Ledger -- on every call, and two instances on one path each hold their own stale snapshot.
+    Sharing one lock per path makes read-modify-write atomic within this process.
+
+    This is deliberately process-local. It does not coordinate separate processes, and it does not
+    use file locking. The in-memory snapshot is still only as fresh as the last reload, so every
+    guarded mutation re-reads the file first.
+
+    NOT guaranteed: atomicity across the remote Hindsight write and this local ledger write. If
+    `client.retain()` succeeds and the subsequent `_flush()` fails, the caller still sees an
+    exception while the case is durably stored remotely, so a caller retrying on that exception
+    can retain twice. That window cannot be closed with a local lock; it needs a durable remote-side
+    idempotency key and is left to a later phase.
+    """
+
+    # Keyed by resolved path so that two Ledger objects on one file share one lock.
+    _locks: dict[str, "threading.RLock"] = {}
+    _locks_guard = threading.Lock()
 
     def __init__(self, path: Path):
         self.path = path
+        self._lock = self._lock_for(path)
         self._entries: dict[str, str] = {}
-        self._load()
+        with self._lock:
+            self._load()
+
+    @classmethod
+    def _lock_for(cls, path: Path) -> "threading.RLock":
+        key = os.path.normcase(str(Path(path).resolve()))
+        with cls._locks_guard:
+            lock = cls._locks.get(key)
+            if lock is None:
+                lock = cls._locks[key] = threading.RLock()
+            return lock
+
+    @property
+    def lock(self) -> "threading.RLock":
+        """The path-shared reentrant lock guarding this ledger."""
+        return self._lock
 
     def _load(self) -> None:
         if not self.path.is_file():
@@ -135,15 +173,28 @@ class Ledger:
         if isinstance(entries, dict):
             self._entries = {str(k): str(v) for k, v in entries.items()}
 
+    def refresh(self) -> None:
+        """Re-read the file so an update written by another Ledger on this path is seen.
+
+        The caller must hold `lock`. A corrupt or unreadable file is ignored, matching `_load()`:
+        the ledger is an optimisation, and refusing to retain because the local file is damaged
+        would be worse than a possible duplicate.
+        """
+        self._load()
+
     def has(self, case_key: str) -> bool:
-        return case_key in self._entries
+        with self._lock:
+            return case_key in self._entries
 
     def get(self, case_key: str) -> str | None:
-        return self._entries.get(case_key)
+        with self._lock:
+            return self._entries.get(case_key)
 
     def record(self, case_key: str, memory_id: str) -> None:
-        self._entries[case_key] = memory_id
-        self._flush()
+        with self._lock:
+            self._load()
+            self._entries[case_key] = memory_id
+            self._flush()
 
     def _flush(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -181,6 +232,10 @@ class HindsightMemoryStore:
         self._config = config
         self._client = client if client is not None else self._build_client(config)
         self._ledger = ledger if ledger is not None else Ledger(config.ledger_path)
+        # P3-1: one lock per ledger path, shared with any other Ledger on the same file, held
+        # across the whole check-then-act below. It is reentrant so the nested `has()` and
+        # `record()` calls do not deadlock.
+        self._retain_lock = self._ledger.lock
         self._closed = False
         self._ensure_bank()
 
@@ -299,6 +354,18 @@ class HindsightMemoryStore:
         )
 
     def retain(self, case: MemoryCase) -> RetentionDecision:
+        """Retain a case, skipping it if the idempotency ledger already records it.
+
+        P3-1: the ledger check, the remote write and the ledger record are one critical section,
+        so two concurrent retains of the same case cannot both pass the check and both write
+        remotely. `refresh()` re-reads the file first, because a second store on the same path
+        loaded its snapshot before the first store wrote.
+
+        This serialises concurrent retains in one process and makes a lost local update
+        impossible. It does NOT make the remote write and the local record atomic together: if the
+        remote write succeeds and the ledger flush then fails, the caller receives an exception
+        while the case is already stored remotely, and a retry could retain twice.
+        """
         try:
             MemoryCase.from_dict(case.to_dict())
         except SchemaError as exc:
@@ -307,37 +374,40 @@ class HindsightMemoryStore:
         session_id = case.session_id or "seed"
         case_key = compute_case_key(case, session_id)
 
-        if self._ledger.has(case_key):
-            existing = self._ledger.get(case_key)
+        with self._retain_lock:
+            self._ledger.refresh()
+
+            if self._ledger.has(case_key):
+                existing = self._ledger.get(case_key)
+                return RetentionDecision(
+                    retained=False,
+                    reason="skipped: case already retained (idempotency ledger)",
+                    memory_case_id=existing,
+                    validated=True,
+                    case_key=case_key,
+                )
+
+            metadata = case_metadata(case, case_key)
+            try:
+                response = self._client.retain(
+                    bank_id=self._config.bank_id,
+                    content=render_content(case),
+                    context=CONTEXT_LABEL,
+                    metadata=metadata,
+                    tags=case_tags(case),
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise self._classify_backend_error(exc, "retain") from exc
+
+            memory_id = str(_attr(response, "memory_id", None) or _attr(response, "id", "") or case_key)
+            self._ledger.record(case_key, memory_id)
             return RetentionDecision(
-                retained=False,
-                reason="skipped: case already retained (idempotency ledger)",
-                memory_case_id=existing,
+                retained=True,
+                reason="retained",
+                memory_case_id=memory_id,
                 validated=True,
                 case_key=case_key,
             )
-
-        metadata = case_metadata(case, case_key)
-        try:
-            response = self._client.retain(
-                bank_id=self._config.bank_id,
-                content=render_content(case),
-                context=CONTEXT_LABEL,
-                metadata=metadata,
-                tags=case_tags(case),
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise self._classify_backend_error(exc, "retain") from exc
-
-        memory_id = str(_attr(response, "memory_id", None) or _attr(response, "id", "") or case_key)
-        self._ledger.record(case_key, memory_id)
-        return RetentionDecision(
-            retained=True,
-            reason="retained",
-            memory_case_id=memory_id,
-            validated=True,
-            case_key=case_key,
-        )
 
     def update(self, case_id: str, *, text: str, reason: str) -> None:
         if not case_id or not text.strip() or not reason.strip():
