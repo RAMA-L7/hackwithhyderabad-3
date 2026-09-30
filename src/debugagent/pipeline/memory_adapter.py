@@ -54,6 +54,18 @@ class HindsightMemoryPort:
         self._store = store
         self._policy = policy if policy is not None else policy_from_config(store.config)
 
+    def client_identity(self) -> object:
+        """The backend client object this port shares with any other port over the same bank.
+
+        Exposed for ONE reason: the P5 composition root keys its Coordinator bindings on the client
+        rather than on the port, because two `MemoryPort` objects wrapping one client are two keys but
+        only one unsafe resource. Read-only; it hands back the existing object and creates nothing.
+
+        Reaching through `_store` is deliberate - the store offers no public accessor for its client,
+        and adding one there would be a wider change than this needs.
+        """
+        return self._store._client
+
     # --- recall -----------------------------------------------------------------
     def recall_and_classify(self, query: str) -> dict:
         try:

@@ -350,9 +350,21 @@ class HindsightMemoryStore:
         self._config = config
         self._client = client if client is not None else self._build_client(config)
         self._ledger = ledger if ledger is not None else Ledger(config.ledger_path)
-        # P3-1: one lock per ledger path, shared with any other Ledger on the same file, held
+        # P3-1: one lock per LEDGER PATH, shared with any other Ledger on the same file, held
         # across the whole check-then-act below. It is reentrant so the nested `has()` and
         # `record()` calls do not deadlock.
+        #
+        # READ THIS BEFORE ASSUMING IT PROTECTS THE CLIENT. It does not. Three limits, all
+        # established by the P5 concurrency audit (tests/test_p5_concurrency_readiness.py):
+        #
+        #   1. It is keyed on the LEDGER FILE, not on the client or the bank. Two stores on different
+        #      ledger paths take different locks and will reach one shared client concurrently.
+        #   2. It covers `retain` only. `recall`, `update` and `invalidate` take no lock at all.
+        #   3. It does not exist yet during `__init__`, which calls the client to provision the bank.
+        #
+        # Making this a client-wide lock is the eventual fix, but it is a change to this module's
+        # locking contract and is deliberately NOT done yet. Until then, serialisation of client
+        # access is enforced one level up, by the Coordinator's `MemoryLane`.
         self._retain_lock = self._ledger.lock
         self._closed = False
         self._ensure_bank()

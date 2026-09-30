@@ -188,13 +188,23 @@ class RegistryTests(unittest.TestCase):
                     get_agent(unknown)
                 self.assertIn("closed", str(caught.exception))
 
-    def test_every_worker_has_exactly_the_four_payload_fields(self):
+    def test_every_worker_has_exactly_the_declared_payload_fields(self):
+        """The payload is the ADR's four fields plus the P5 `client_access` capability.
+
+        Was "exactly the four payload fields" until P5 added the fifth. The assertion is kept - the point
+        is that the field set is closed and named in one place, not that it happens to be four - and it
+        is checked against `AGENT_DEFINITION_FIELDS` so adding a field cannot slip in undeclared.
+        """
         for worker, definition in WORKER_ROSTER.items():
             with self.subTest(worker):
                 self.assertEqual(set(definition.to_dict()), set(AGENT_DEFINITION_FIELDS))
-                self.assertEqual(len(definition.to_dict()), 4)
+                self.assertEqual(len(definition.to_dict()), len(AGENT_DEFINITION_FIELDS))
+                self.assertEqual(len(AGENT_DEFINITION_FIELDS), 5,
+                                 "four ADR fields plus `client_access`")
                 for field in ("description", "prompt", "model"):
                     self.assertTrue(getattr(definition, field).strip(), f"{worker}.{field} is empty")
+                self.assertIsInstance(definition.client_access, bool,
+                                      f"{worker}.client_access must be a real boolean")
                 self.assertTrue(definition.allowed_tools, f"{worker}.allowed_tools is empty")
                 for tool in definition.allowed_tools:
                     self.assertIsInstance(tool, str)

@@ -14,9 +14,22 @@ both threads are provably inside the critical section at the same time. A
 `threading.Barrier` that is never satisfied raises `BrokenBarrierError` rather than
 hanging, so a regression fails loudly instead of stalling the suite.
 
-Scope note: these tests make no claim about `hindsight_client`'s own thread-safety. The
-client is an injected offline fake; the guarantee under test is our own Ledger/store
-synchronisation only.
+Scope note - READ BEFORE CITING THE RECALL/RETAIN TEST BELOW: these tests make no claim about
+`hindsight_client`'s own thread-safety. The client here is an injected offline FAKE, and the
+guarantee under test is our own Ledger/store synchronisation only.
+
+That distinction is now load-bearing rather than academic. The P5 concurrency audit
+(tests/test_p5_concurrency_readiness.py) established, against the real installed client, that it
+caches a single `aiohttp.ClientSession` bound to whichever event loop created it, while its
+synchronous bridge gives each thread its own loop - so concurrent use from two threads fails with
+`RuntimeError: Timeout context manager should be used inside a task`.
+
+Consequence: `test_recall_runs_concurrently_with_retain` and
+`test_recall_does_not_acquire_the_ledger_lock` describe FAKE-CLIENT behaviour only. They assert that
+recall takes no ledger lock, which remains true and remains intentional for the store. They do NOT
+show that overlapping recall with retain is safe against the real backend - it is not. In production
+that overlap is prevented one level up, by the Coordinator's `MemoryLane`, and only for flows that
+supply a Coordinator. Do not read these two tests as clearance to run the real client concurrently.
 """
 
 from __future__ import annotations
@@ -377,7 +390,11 @@ class RecallUnaffectedTests(unittest.TestCase):
 
     def test_recall_does_not_acquire_the_ledger_lock(self):
         """recall() must not take the store lock. It touches no ledger state, so locking it
-        would serialise reads for no correctness gain."""
+        would serialise reads for no correctness gain.
+
+        FAKE-CLIENT SCOPE: this is a statement about the store's own locking, not about running the
+        real Hindsight client concurrently. See the module docstring.
+        """
         ledger = _TrackingLedger(memory_config(self.tmp_path).ledger_path)
         store = HindsightMemoryStore(memory_config(self.tmp_path), client=FakeHindsightClient(), ledger=ledger)
 
@@ -388,6 +405,14 @@ class RecallUnaffectedTests(unittest.TestCase):
         self.assertGreater(ledger.tracker.acquisitions, 0, "retain() must take the lock")
 
     def test_recall_runs_concurrently_with_retain(self):
+        """FAKE-CLIENT ONLY. Do not read this as clearance to overlap them in production.
+
+        What it proves: the store does not serialise `recall` against `retain`, which is correct -
+        recall reads no ledger state. What it does NOT prove: that doing so against the real
+        `hindsight_client` is safe. The P5 audit showed the real client caches one loop-bound
+        `aiohttp` session, so this exact overlap fails there with a `RuntimeError`. Against the real
+        backend the overlap is prevented by the Coordinator's `MemoryLane`, not here.
+        """
         client = FakeHindsightClient()
         store = HindsightMemoryStore(memory_config(self.tmp_path), client=client)
         store.retain(case(session_id="run-a"))

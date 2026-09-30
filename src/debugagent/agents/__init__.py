@@ -1,8 +1,11 @@
 """P1 hub-and-spoke delegation seam (docs/adr-001-hub-spoke-coordinator.md).
 
-Data and authorization only. Nothing here executes a worker, calls an LLM, or touches Hindsight.
+Data, authorization and dispatch. Nothing here imports the Phase 1 pipeline, so there is no path from
+this package into evidence construction or verification, and nothing here talks to Hindsight directly
+- a worker reaches memory only through the `MemoryPort` it was given.
 """
 
+from debugagent.agents.coordinator import Coordinator, Dispatch
 from debugagent.agents.registry import (
     AGENT_DEFINITION_FIELDS,
     COORDINATOR_TOOLS,
@@ -44,6 +47,8 @@ __all__ = [
     "AgentDefinition",
     "Artifact",
     "AuthorizationError",
+    "Coordinator",
+    "Dispatch",
     "SubAgentResult",
     "TaskSpec",
     "TaskSpecError",

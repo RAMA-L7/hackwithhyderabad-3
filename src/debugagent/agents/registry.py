@@ -1,8 +1,11 @@
 """P1 closed sub-agent registry and tool authorization (docs/adr-001-hub-spoke-coordinator.md).
 
 The roster is closed: exactly the three workers named in the ADR, and nothing else. An unknown
-agent identity is rejected rather than created. Each worker carries the four-field Agent Definition
-Payload (`description`, `prompt`, `allowed_tools`, `model`) and no additional field.
+agent identity is rejected rather than created. Each worker carries the ADR's four-field Agent
+Definition Payload (`description`, `prompt`, `allowed_tools`, `model`) plus the P5 `client_access`
+capability, which says whether the agent can reach the Hindsight client and therefore whether its
+tasks must be serialised. That is the only field beyond the ADR's four, and it is listed in
+`AGENT_DEFINITION_FIELDS` so it cannot be added quietly.
 
 Tool permission is per-agent and structural. `task` is granted to the coordinator only; no worker's
 `allowed_tools` contains it, and `authorize()` re-checks a `TaskSpec` against the registry so a
@@ -20,8 +23,13 @@ from typing import Any, Mapping
 
 from debugagent.agents.tasks import DELEGATOR, TASK_TOOL, TaskSpec, TaskSpecError
 
-# The payload is exactly these four fields (ADR: "4-field Agent Definition Payload").
-AGENT_DEFINITION_FIELDS = ("description", "prompt", "allowed_tools", "model")
+# The payload is exactly these fields: the ADR's four, plus the P5 `client_access` capability.
+# `client_access` is a CAPABILITY, not a permission: it records whether executing this agent's tasks
+# can reach the Hindsight client, which is what decides whether a task must be serialised through the
+# shared `MemoryLane`. It grants nothing - authorisation is unchanged and still checks tools, delegator,
+# model and depth - and it is deliberately on the definition, so a worker cannot opt itself out of the
+# lane by forgetting to declare something.
+AGENT_DEFINITION_FIELDS = ("description", "prompt", "allowed_tools", "model", "client_access")
 
 # ADR: "`task` is granted **only** to the Coordinator." Exact tool sets, not extended.
 COORDINATOR_TOOLS: tuple[str, ...] = ("task", "read", "grep", "glob")
@@ -31,14 +39,31 @@ class AuthorizationError(TaskSpecError):
     """An agent identity or tool request is not permitted. Fails closed."""
 
 
+class RegistrationError(TaskSpecError):
+    """A worker could not be attached to a Coordinator.
+
+    Separate from `AuthorizationError` because it says nothing about whether a TASK is permitted: the
+    task may be perfectly authorised, and the problem is that the identity has no worker, or already has
+    a different one. Keeping them apart stops a wiring mistake from being reported as a permission
+    problem, which would send a reader looking in the wrong place.
+    """
+
+
 @dataclass(frozen=True)
 class AgentDefinition:
-    """The four-field payload. No other field exists, so nothing else can be configured."""
+    """The definition payload. No field exists that is not listed in `AGENT_DEFINITION_FIELDS`.
+
+    `client_access` says whether running this agent's tasks can reach the Hindsight client, and so
+    whether they must be serialised through the shared `MemoryLane`. It lives HERE rather than on the
+    worker class so that it cannot be forgotten: a worker that reached the client without the roster
+    saying so would run unsynchronised, and no test of the worker would catch it.
+    """
 
     description: str
     prompt: str
     allowed_tools: tuple[str, ...]
     model: str
+    client_access: bool
 
     def permits(self, tool: str) -> bool:
         return tool in self.allowed_tools
@@ -49,6 +74,7 @@ class AgentDefinition:
             "prompt": self.prompt,
             "allowed_tools": list(self.allowed_tools),
             "model": self.model,
+            "client_access": self.client_access,
         }
 
     @classmethod
@@ -57,7 +83,7 @@ class AgentDefinition:
         if not isinstance(data, dict):
             raise AuthorizationError(f"{label}: expected object, got {type(data).__name__}")
         for key in sorted(set(data) - set(AGENT_DEFINITION_FIELDS)):
-            errors.append(f"{label}.{key}: not one of the four payload fields {list(AGENT_DEFINITION_FIELDS)}")
+            errors.append(f"{label}.{key}: not one of the payload fields {list(AGENT_DEFINITION_FIELDS)}")
         for key in AGENT_DEFINITION_FIELDS:
             if key not in data:
                 errors.append(f"{label}.{key}: required")
@@ -71,6 +97,11 @@ class AgentDefinition:
             value = data.get(key)
             if not isinstance(value, str) or not value.strip():
                 errors.append(f"{label}.{key}: expected a non-empty string")
+        if not isinstance(data.get("client_access"), bool):
+            # Required, not defaulted. A missing capability would have to mean SOMETHING, and both
+            # readings are dangerous in opposite directions: defaulting to True costs parallelism,
+            # defaulting to False lets a client-touching agent run unsynchronised.
+            errors.append(f"{label}.client_access: expected a boolean")
         if TASK_TOOL in tuple(tools or ()):
             # Belt and braces: `tasks.TaskSpec` already refuses this, and the roster below is
             # asserted tool-clean by tests.
@@ -78,7 +109,8 @@ class AgentDefinition:
         if errors:
             raise AuthorizationError(f"{label}: " + "; ".join(errors))
         return cls(description=str(data["description"]), prompt=str(data["prompt"]),
-                   allowed_tools=tuple(tools), model=str(data["model"]))
+                   allowed_tools=tuple(tools), model=str(data["model"]),
+                   client_access=data["client_access"])
 
 
 _MEMORY_SPECIALIST = AgentDefinition(
@@ -104,6 +136,9 @@ _MEMORY_SPECIALIST = AgentDefinition(
     ),
     allowed_tools=("hindsight_recall", "hindsight_get_facts"),
     model="primary",
+    # The only registered agent that reaches the Hindsight client, and so the only one whose
+    # tasks must be serialised through the shared MemoryLane.
+    client_access=True,
 )
 
 _CODE_LOG_VERIFIER = AgentDefinition(
@@ -126,6 +161,8 @@ _CODE_LOG_VERIFIER = AgentDefinition(
     ),
     allowed_tools=("read", "grep", "glob"),
     model="primary",
+    # Reads the current repository and logs; never the memory bank.
+    client_access=False,
 )
 
 _PATCH_GENERATOR = AgentDefinition(
@@ -149,6 +186,8 @@ _PATCH_GENERATOR = AgentDefinition(
     ),
     allowed_tools=("read", "diff"),
     model="primary",
+    # Proposes a diff; never the memory bank.
+    client_access=False,
 )
 
 # Closed roster: exactly the three ADR workers. Adding an agent is a code change, on purpose.
@@ -171,7 +210,10 @@ _COORDINATOR = AgentDefinition(
             "retain memory."),
     allowed_tools=COORDINATOR_TOOLS,
     model="primary",
+    # The coordinator delegates; it never runs a worker's task and never reaches the client.
+    client_access=False,
 )
+
 
 
 def agent_names() -> tuple[str, ...]:
