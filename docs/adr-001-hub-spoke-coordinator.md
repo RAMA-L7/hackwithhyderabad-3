@@ -2,11 +2,16 @@
 
 ## Status
 
-Accepted (Design Phase — P0)
+Accepted (Design Phase — P0). Implementation progress: **P0, P1, P2, P3-0 and P3-1 are
+implemented**; **P3-2 is audited with implementation pending**; P4, P5 and P6 are not started.
 
-Documentation only. No code in `src/`, `tests/`, or configuration is changed by this ADR. It records a
-decision and the prerequisites any implementation must satisfy; it does not authorise implementation
-beyond P0.
+This ADR was itself documentation only, and it did not authorise implementation beyond P0. Subsequent
+phases were implemented on their own gates, recorded in [Migration Phases](#migration-phases) below;
+the decision and prerequisites recorded here are unchanged by that implementation.
+
+The architecture this ADR describes is still **partly aspirational**. No worker executes, and there is
+no Coordinator runtime or parallel fan-out; what exists is the delegation seam (P1), the tool-calling
+transport (P2), and local concurrency hardening (P3-1).
 
 ## Context
 
@@ -159,10 +164,10 @@ recorded in this ADR on purpose.
 
 The real host and tool-execution layer must establish resource limits before any worker is executed —
 at minimum a cap on tool calls per turn, a cap on tool-result content size, and a cap on total
-conversation size. Per the phase table that belongs with **P3** (resource and concurrency hardening) and
-must be in place before **P4** (the first real worker) or **P5** (parallel fan-out, which multiplies
-the payload by the number of concurrent workers). Until then, tool payloads are unbounded and this
-limitation is knowingly accepted.
+conversation size. This is **still outstanding**: P3-0/P3-1 completed the concurrency half of P3 and
+did not add these limits, so they remain a prerequisite before **P4** (the first real worker) or
+**P5** (parallel fan-out, which multiplies the payload by the number of concurrent workers). Until
+then, tool payloads are unbounded and this limitation is knowingly accepted.
 
 ### Agent Definition Payloads
 
@@ -282,7 +287,7 @@ engineer decision.
 
 - `MemoryPort` signature changes ripple to `HindsightMemoryPort`, `OfflineMemoryPort` and
   `FakeMemoryPort` (`tests/loop_support.py`).
-- 254 tests across 17 files encode current behaviour, including trust-boundary assertions.
+- 356 tests across 20 files encode current behaviour, including trust-boundary assertions.
 - `Session.to_dict()` is the `inspect` output format read by the demo.
 
 ## Migration Phases
@@ -293,11 +298,40 @@ Each phase is independently shippable and revertible; each has an explicit gate.
 |---|---|---|---|
 | **P0** | This ADR. Documentation only. | review | done |
 | **P1** | Delegation **seam** only: `TaskSpec`, `WorkerContext`, `SubAgentResult`, closed worker registry, tool authorization, anti-recursion enforcement, context-isolation structures. No LLM changes, no tool calling, no worker execution. | unit tests for the anti-recursion rule | done — 37 tests |
-| **P2** | Tool calling: `tools`/`tool_choice` in `LLMRouter`, assistant `tool_calls` turn, `role: "tool"` results, bounded turn loop, `task` execution. Default path byte-identical. | all prior tests green; new tool-loop tests | not started |
-| **P3** | Concurrency safety for `HindsightMemoryStore` (lock + single writer). | concurrent recall/retain test | not started |
+| **P2** | Tool calling: `tools`/`tool_choice` in `LLMRouter`, assistant `tool_calls` turn, `role: "tool"` results, bounded turn loop, `task` execution. Default path byte-identical. | all prior tests green; new tool-loop tests | done — 46 tests |
+| **P3-0/P3-1** | Deterministic concurrency regression coverage, then process-local concurrency safety for `HindsightMemoryStore` (path-keyed lock + single writer). | concurrent recall/retain test | done — 12 concurrency tests |
+| **P3-2** | Cross-system retention: local ledger persistence vs remote Hindsight write. Phase A case identity; P3-2B state-idempotent remote replacement (`document_id=case_key`, `update_mode="replace"`); P3-2C failure legibility (typed `persist` / `ambiguous` / `unavailable`, `success=False` handling, corrupt-ledger surfacing); P3-2D cross-phase integration coverage. Local/remote atomicity still outstanding. | identity-contract, failure-classification and cross-phase integration tests | in progress — A, B, C, D done |
 | **P4** | Memory Specialist only, single task, serial. | Acts 1–4 rehearsal on fresh banks, output unchanged | not started |
 | **P5** | Parallel fan-out with join barrier and partial failure. | latency and failure-injection tests | not started |
 | **P6** | Code/Log Verifier, then Patch Generator. | trust-rule regression suite green | not started |
+
+Suite at the P3-1 checkpoint: 349 tests, 9 skipped. **P3-2 Phases A, B, C and D have since landed**,
+taking the suite to **455 tests, 9 skipped**.
+
+**P3-2, in brief.** A live capability experiment established that a fixed Hindsight `document_id` with
+`update_mode="replace"` gives *state-idempotent* remote replacement, including after an ambiguous
+outcome. `replace` is **destructive**, so it is safe here only because the case identity is
+content-addressed: Phase A made `compute_case_key()` incorporate an outcome digest, and fixed
+`MemoryCase.to_dict()` silently dropping `session_id` — both pinned by tests. Retain now sends
+`document_id=case_key` with `update_mode="replace"`.
+
+**Not claimed, and not achievable:** exactly-once semantics. A retry still issues another remote
+request and pays another extraction/token cost; only the resulting remote *state* is the same.
+
+P3-2C makes failures legible rather than atomic. Retention now distinguishes `persist` (the remote
+write may have succeeded, the local ledger did not — nothing was rolled back), `ambiguous` (transport
+broke with no answer; the remote outcome is unknown) and `unavailable` (the service answered and
+failed, so a retry is clean). A pre-transmission failure stays clean, and a corrupt ledger is
+surfaced rather than silently read as empty.
+
+Phase D adds cross-phase integration coverage: the computed identity reaching `document_id`, one
+identity used consistently across ledger/metadata/remote document, the key surviving into recall and
+`dedupe_by_case`, and P3-1's serialized retain composing with P3-2B's document identity under
+concurrency.
+
+**Still outstanding:** local/remote atomicity, automatic retry (there is none by design),
+reconciliation of an unknown remote outcome, and cross-process locking. The synchronous Hindsight
+client is **not thread-safe** under concurrent retain, which constrains P5.
 
 Explicitly deferred: no change to the EVIDENCE construction path, no threshold changes, no change to
 `verify()` or to engineer interaction.

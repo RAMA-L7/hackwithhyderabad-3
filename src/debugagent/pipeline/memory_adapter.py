@@ -17,7 +17,13 @@ from __future__ import annotations
 from debugagent.config import MemoryConfig, load_memory_config
 from debugagent.memory.hindsight_store import HindsightMemoryStore
 from debugagent.memory.matching import AbstentionPolicy, classify_candidates
-from debugagent.memory.store import MemoryAuthError, MemorySchemaError, MemoryUnavailable
+from debugagent.memory.store import (
+    MemoryAmbiguousError,
+    MemoryAuthError,
+    MemoryPersistError,
+    MemorySchemaError,
+    MemoryUnavailable,
+)
 from debugagent.pipeline.memory_port import MemoryFailure, check_retention, check_view
 from debugagent.schemas import MemoryCase
 
@@ -95,6 +101,13 @@ class HindsightMemoryPort:
             decision = self._store.retain(parsed)
         except MemoryAuthError as exc:
             raise MemoryFailure("auth", str(exc)) from exc
+        except MemoryPersistError as exc:
+            # Checked before MemoryUnavailable: the remote write may already have happened and the
+            # local record did not, which is a different situation for the caller to reason about.
+            raise MemoryFailure("persist", str(exc)) from exc
+        except MemoryAmbiguousError as exc:
+            # Checked before MemoryUnavailable: a subclass, and the remote outcome is UNKNOWN.
+            raise MemoryFailure("ambiguous", str(exc)) from exc
         except MemoryUnavailable as exc:
             raise MemoryFailure("unavailable", str(exc)) from exc
         except MemorySchemaError as exc:

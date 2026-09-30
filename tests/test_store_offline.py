@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
 import support
 from debugagent.memory.hindsight_store import (
+    LEDGER_VERSION,
     HindsightMemoryStore,
     Ledger,
     case_tags,
@@ -15,7 +17,7 @@ from debugagent.memory.hindsight_store import (
     dedupe_by_case,
     render_content,
 )
-from debugagent.memory.store import MemorySchemaError
+from debugagent.memory.store import MemoryPersistError, MemorySchemaError
 from debugagent.schemas import MemoryCase, RecallResult
 from support import FakeHindsightClient, FakeMemory, FakeScores, memory_config
 
@@ -220,9 +222,28 @@ class HelperTests(StoreTestBase):
     def test_tags_include_outcome(self):
         self.assertIn("outcome:resolved", case_tags(case()))
 
-    def test_ledger_ignores_corrupt_file(self):
+    def test_ledger_surfaces_corrupt_file_instead_of_ignoring_it(self):
+        """P3-2C contract change, replacing the previous "ignore a corrupt file" behaviour.
+
+        Silently treating a corrupt ledger as empty would read as "this agent has retained
+        nothing" and re-retain every case. It is now a typed persistence failure, and the
+        original file is left in place.
+        """
         path = self.tmp_path / "ledger.json"
         path.write_text("{not json", encoding="utf-8")
+        with self.assertRaises(MemoryPersistError) as ctx:
+            Ledger(path)
+        self.assertIn("malformed", str(ctx.exception))
+        self.assertEqual(path.read_text(encoding="utf-8"), "{not json", "corrupt file must survive")
+
+    def test_ledger_missing_file_is_normal_first_use(self):
+        path = self.tmp_path / "absent.json"
+        self.assertFalse(path.is_file())
+        self.assertEqual(Ledger(path).has("any"), False)
+
+    def test_ledger_valid_empty_file_is_accepted(self):
+        path = self.tmp_path / "empty.json"
+        path.write_text(json.dumps({"version": LEDGER_VERSION, "entries": {}}), encoding="utf-8")
         self.assertEqual(Ledger(path).has("any"), False)
 
 

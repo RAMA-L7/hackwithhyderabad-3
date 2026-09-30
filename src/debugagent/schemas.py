@@ -117,6 +117,11 @@ class MemoryCase:
             "resolution": self.resolution,
             "outcome": self.outcome,
             "verification_notes": self.verification_notes,
+            # Identity fields are optional (`str | None`), and from_dict() already accepts them.
+            # Emitting them here keeps the round trip lossless: dropping them silently
+            # discarded session identity, which is half of compute_case_key()'s input.
+            "case_id": self.case_id,
+            "session_id": self.session_id,
         }
 
     @classmethod

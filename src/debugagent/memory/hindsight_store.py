@@ -14,7 +14,9 @@ from typing import Any
 
 from debugagent.config import MemoryConfig
 from debugagent.memory.store import (
+    MemoryAmbiguousError,
     MemoryAuthError,
+    MemoryPersistError,
     MemorySchemaError,
     MemoryUnavailable,
 )
@@ -29,9 +31,94 @@ from debugagent.schemas import (
 CONTEXT_LABEL = "debugagent-case"
 LEDGER_VERSION = 1
 
+# P3-2B: Hindsight's `update_mode` enum is ('replace', 'append') - verified in the installed
+# client's generated model, which rejects any other value client-side.
+REPLACE_MODE = "replace"
+
+# P3-2C: transport failures that leave the remote outcome UNKNOWN, i.e. the request may already
+# have been transmitted and applied when the connection broke. The installed client is built on
+# urllib3 (verified: hindsight_client_api/api_client.py), so these are its exception types, plus
+# the stdlib names our own transport path can raise.
+#
+# Deliberately EXCLUDED as "clean" failures, because nothing could have been stored:
+#   ConnectTimeoutError, NewConnectionError, NameResolutionError, ProxyError, PoolError,
+#   ClosedPoolError, EmptyPoolError, FullPoolError, and urllib.error.URLError wrapping them.
+# An HTTP response (any status, including 5xx) is a CLEAN failure: the service answered.
+try:  # pragma: no cover - exercised via the classification tests
+    from urllib3 import exceptions as _ue
+
+    # "Never transmitted" cases: the connection was never established, so nothing could have been
+    # stored. urllib3's hierarchy overlaps heavily (NameResolutionError -> NewConnectionError ->
+    # ConnectTimeoutError -> TimeoutError, while ReadTimeoutError -> TimeoutError AND -> PoolError),
+    # so this list must name only the specific leaves and must NOT include a broad base such as
+    # PoolError - ReadTimeoutError is a PoolError subclass and would be misread as clean.
+    _CLEAN_BEFORE_TRANSMIT = (
+        _ue.ConnectTimeoutError,
+        _ue.NewConnectionError,
+        _ue.NameResolutionError,
+        _ue.ProxyError,
+        _ue.ClosedPoolError,
+        _ue.EmptyPoolError,
+        _ue.FullPoolError,
+    )
+    # ReadTimeoutError: the request went out and no response came back. ProtocolError: the peer
+    # dropped the connection mid-response. Both leave the server's fate unknown.
+    _AMBIGUOUS_TRANSPORT = (
+        _ue.ReadTimeoutError,
+        _ue.ProtocolError,
+        TimeoutError,
+        ConnectionError,
+    )
+except Exception:  # pragma: no cover - urllib3 ships with the client; degrade safely
+    _CLEAN_BEFORE_TRANSMIT = ()
+    _AMBIGUOUS_TRANSPORT = (TimeoutError, ConnectionError)
+
+
+def _is_ambiguous_transport(exc: Exception) -> bool:
+    """True when `exc` leaves the remote outcome unknown.
+
+    The "never transmitted" set is checked FIRST. urllib3's classes are not disjoint:
+    `NameResolutionError` descends from `ConnectTimeoutError` and `TimeoutError`, while
+    `ReadTimeoutError` descends from `TimeoutError` too. Naming only the specific leaves in each set
+    - and never a shared base - keeps the two verdicts disjoint.
+
+    A connection that was never established cannot have stored anything, so those stay clean. A
+    response - including an error response - means the service answered, so that is clean too.
+    """
+    if getattr(exc, "status", None) is not None:
+        return False  # the service answered; the outcome is known either way
+    if _CLEAN_BEFORE_TRANSMIT and isinstance(exc, _CLEAN_BEFORE_TRANSMIT):
+        return False
+    return isinstance(exc, _AMBIGUOUS_TRANSPORT)
+
+
+def compute_outcome_digest(case: MemoryCase) -> str:
+    """Deterministic 16-hex digest of a case's outcome: sha256(root_cause|resolution)[:16].
+
+    Outcome identity, not the `outcome` enum: two cases for the same problem that reached
+    *different* conclusions must be distinguishable. `None` is normalised to the empty string so a
+    case that recorded nothing yet hashes the same as one whose fields are absent, rather than
+    raising or depending on a repr.
+    """
+    payload = f"{case.root_cause or ''}|{case.resolution or ''}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
 
 def compute_case_key(case: MemoryCase, session_id: str) -> str:
-    payload = f"{case.problem_signature}|{session_id}".encode("utf-8")
+    """Case identity: sha256(problem_signature|session_id|outcome_digest)[:16].
+
+    `problem_signature` and `session_id` keep their established meaning: a new session is a
+    legitimately new case for the same problem (docs/change-log.md, Stage 20). The outcome digest is
+    appended so two CONTRADICTORY outcomes for one problem in one session are distinct cases rather
+    than one silently dropped as a duplicate.
+
+    Deterministic by construction: no timestamp, UUID, PID, randomness or dict ordering is involved.
+    This is a new identity namespace - keys minted by the previous two-component formula are simply
+    never matched again, and existing ledgers are left untouched rather than rewritten.
+    """
+    payload = (
+        f"{case.problem_signature}|{session_id}|{compute_outcome_digest(case)}"
+    ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -161,17 +248,48 @@ class Ledger:
         return self._lock
 
     def _load(self) -> None:
+        """Load existing entries.
+
+        P3-2C: a missing file is normal first use and stays silent. A file that EXISTS but cannot be
+        read or parsed is a different thing: silently treating it as empty would turn "the ledger
+        lost its contents" into "this agent has never retained anything", and re-retain every case.
+        That is surfaced as a persistence failure instead. The file is never rewritten or deleted
+        here, so the original evidence survives for inspection.
+        """
         if not self.path.is_file():
             return
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return
+            raw = self.path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise MemoryPersistError(
+                f"ledger at {self.path} exists but could not be read ({type(exc).__name__}); "
+                "refusing to treat unreadable ledger state as empty"
+            ) from exc
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise MemoryPersistError(
+                f"ledger at {self.path} is malformed ({exc}); refusing to treat a corrupt ledger "
+                "as empty, which would re-retain every case. The file has been left untouched."
+            ) from exc
+        if not isinstance(data, dict):
+            raise MemoryPersistError(
+                f"ledger at {self.path} is not a JSON object; refusing to treat a corrupt ledger "
+                "as empty. The file has been left untouched."
+            )
         if data.get("version") != LEDGER_VERSION:
-            return
+            raise MemoryPersistError(
+                f"ledger at {self.path} has version {data.get('version')!r}, expected "
+                f"{LEDGER_VERSION}; refusing to treat an incompatible ledger as empty. The file "
+                "has been left untouched."
+            )
         entries = data.get("entries")
-        if isinstance(entries, dict):
-            self._entries = {str(k): str(v) for k, v in entries.items()}
+        if not isinstance(entries, dict):
+            raise MemoryPersistError(
+                f"ledger at {self.path} has no usable 'entries' object; refusing to treat a corrupt "
+                "ledger as empty. The file has been left untouched."
+            )
+        self._entries = {str(k): str(v) for k, v in entries.items()}
 
     def refresh(self) -> None:
         """Re-read the file so an update written by another Ledger on this path is seen.
@@ -287,12 +405,65 @@ class HindsightMemoryStore:
         except Exception as exc:  # noqa: BLE001
             raise MemoryUnavailable(f"bank provisioning failed ({type(exc).__name__})") from exc
 
+    def _record_locally(self, case_key: str, memory_id: str, response: Any) -> None:
+        """Record the retain in the local ledger, after checking the response really succeeded.
+
+        P3-2C. Two failure modes are made explicit here:
+
+        1. `success=False` on an otherwise well-formed response means the service reported that it
+           did NOT store the case. Recording it anyway would mark a case as retained that is not
+           retrievable, so it is refused. (The installed `RetainResponse` does carry `success`, and
+           nothing in the client checks it on our behalf.)
+
+        2. A local write failure AFTER a successful remote write is the cross-system gap. It is
+           raised as MemoryPersistError and says plainly that the remote document may already
+           exist. It does NOT claim any rollback: the remote write was not undone and cannot be
+           from here.
+        """
+        success = _attr(response, "success", None)
+        if success is False:
+            raise MemoryUnavailable(
+                f"hindsight reported success=False for case {case_key}; nothing was stored and the "
+                "idempotency ledger was NOT updated"
+            )
+        try:
+            self._ledger.record(case_key, memory_id)
+        except MemoryPersistError:
+            # Already a typed, explicit persistence failure - let it through unchanged.
+            raise
+        except OSError as exc:
+            raise MemoryPersistError(
+                f"retain reported success but the local ledger could not be written "
+                f"({type(exc).__name__}: {exc}). The remote document for case {case_key} may "
+                "already exist and was NOT rolled back. A retry would re-issue the remote "
+                "operation (state-idempotent at the document, but not free)."
+            ) from exc
+
     def _classify_backend_error(self, exc: Exception, operation: str) -> MemoryUnavailable:
+        """Classify a failed remote call.
+
+        P3-2C. Three outcomes, deliberately distinct:
+
+        - credentials rejected -> MemoryAuthError
+        - the service answered, and the answer was a failure -> MemoryUnavailable (the call is
+          known not to have stored anything, so a retry is a clean retry)
+        - the transport broke with no answer, after the request may already have been transmitted
+          -> MemoryAmbiguousError (the remote outcome is UNKNOWN)
+
+        A failure that provably happened before the request reached the service - DNS resolution,
+        connection refused, pool errors - is a CLEAN failure, not an ambiguous one: nothing could
+        have been stored.
+        """
         status = getattr(exc, "status", None)
         name = type(exc).__name__
         text = str(exc)[:200]
         if status in (401, 403) or "Unauthorized" in name:
             return MemoryAuthError(f"{operation} rejected credentials ({name})")
+        if _is_ambiguous_transport(exc):
+            return MemoryAmbiguousError(
+                f"{operation} outcome UNKNOWN: the request may already have been applied "
+                f"({name}: {text})"
+            )
         return MemoryUnavailable(f"{operation} failed ({name}: {text})")
 
     def recall(
@@ -361,10 +532,25 @@ class HindsightMemoryStore:
         remotely. `refresh()` re-reads the file first, because a second store on the same path
         loaded its snapshot before the first store wrote.
 
-        This serialises concurrent retains in one process and makes a lost local update
-        impossible. It does NOT make the remote write and the local record atomic together: if the
-        remote write succeeds and the ledger flush then fails, the caller receives an exception
-        while the case is already stored remotely, and a retry could retain twice.
+        P3-2B: the remote call carries `document_id=case_key` with `update_mode="replace"`, so a
+        repeated retain of the same case converges on ONE remote document instead of appending a
+        second. `case_key` is a content-addressed identity (it hashes the problem signature, the
+        session, and the outcome digest), so two cases that genuinely differ cannot share a
+        document id.
+
+        This is STATE-IDEMPOTENT REMOTE REPLACEMENT, and nothing stronger:
+
+        - It is NOT exactly-once. A retry still issues another remote request, pays another
+          extraction/token cost, and is a separate operation; only the resulting remote STATE is
+          the same.
+        - It does NOT make the remote write and the local ledger record atomic together. If the
+          remote write succeeds and the ledger flush then fails, the caller still receives an
+          exception while the case is already stored remotely. Retrying is now safe for the remote
+          document - it replaces it - but the local ledger still has no record of the first write.
+        - `replace` is destructive by design: writing a different case under an existing document
+          id overwrites the earlier content. The content-addressed `case_key` is what makes that
+          safe here, so changing the identity formula would change this guarantee.
+        - The P3-1 process-local lock is unchanged and still spans check, remote write and record.
         """
         try:
             MemoryCase.from_dict(case.to_dict())
@@ -395,12 +581,14 @@ class HindsightMemoryStore:
                     context=CONTEXT_LABEL,
                     metadata=metadata,
                     tags=case_tags(case),
+                    document_id=case_key,
+                    update_mode=REPLACE_MODE,
                 )
             except Exception as exc:  # noqa: BLE001
                 raise self._classify_backend_error(exc, "retain") from exc
 
             memory_id = str(_attr(response, "memory_id", None) or _attr(response, "id", "") or case_key)
-            self._ledger.record(case_key, memory_id)
+            self._record_locally(case_key, memory_id, response)
             return RetentionDecision(
                 retained=True,
                 reason="retained",

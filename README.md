@@ -115,6 +115,39 @@ Read this diagram as the **planned** target. It is not a claim that the three wo
 and not a claim that they run in parallel. Today the Coordinator can only *specify* and
 *authorize* a task; it cannot yet execute one, and no worker process is started.
 
+### Runtime architecture
+
+The components that exist today, and the boundary each one sits behind:
+
+| Layer                | Component | Responsibility and boundary |
+| -------------------- | --------- | --------------------------- |
+| Orchestration        | `LLMRouter` | Provider-independent LLM access. Two call paths: `complete_structured()` for single-shot structured output, and `complete_with_tools()` for a bounded tool-calling loop. Both exist; only the first is on the Phase 1 path. |
+| Tool-calling seam    | `ToolDefinition`, `ToolCall`, `ToolResultMessage`, `ToolLoopResult` | Transport for a tool round trip. Tool calling is **opt-in per route** via `LLM_<ROLE>_TOOLS`, and the turn loop is bounded (`MAX_TOOL_TURNS`, default 4). Tool execution is **caller-supplied** — the router does not run tools itself. |
+| Memory port          | `MemoryPort` protocol, `HindsightMemoryPort`, `OfflineMemoryPort` | The seam the pipeline talks to. Translation, abstention policy and error classification live here, so the pipeline never depends on a vendor SDK. |
+| Memory store         | `HindsightMemoryStore`, `Ledger` | The only place Hindsight is touched. Owns the client lifecycle, the idempotency ledger, and the retain path. |
+| Evidence             | `pipeline/evidence.py`, `pipeline/verify.py` | Evidence is built **only** from what the engineer supplies now. The module deliberately exposes no parameter through which recalled memory could enter. |
+| Delegation           | `TaskSpec`, `WorkerContext`, `SubAgentResult`, closed worker registry | Defines and authorizes delegation. **No worker execution exists yet.** |
+
+Two boundaries are enforced in code rather than by convention:
+
+- **Evidence has no memory parameter.** `build_evidence()` accepts the normalized case and the
+  engineer's own facts. Recalled memory cannot reach it, so it cannot become evidence.
+- **Verification refuses to proceed without the engineer.** `verify()` raises if a hypothesis has no
+  recorded engineer decision, and a missing evidence item yields `insufficient_evidence` *however
+  strong the memory match* — memory never fills a gap.
+
+This is what makes the separation real rather than aspirational:
+
+```
+Proposal ≠ Evidence ≠ Knowledge ≠ Authorization
+```
+
+- **Knowledge** is what Hindsight recalls: prior cases, offered as context.
+- **Evidence** is what the engineer supplies now, and what deterministic tools read from the
+  repository.
+- **Proposal** is what the model produces, including any patch diff.
+- **Authorization** is the engineer's decision, and nothing else confers it.
+
 ### Agent definition payload
 
 Every agent is declared with exactly four fields, and no more:
@@ -162,7 +195,9 @@ registration time, and `max_spawn_depth` is fixed at 1. Delegation depth cannot 
 | Hindsight concurrency hardening                | Implemented   |
 | Deterministic concurrency regression tests     | Implemented   |
 | Remote Hindsight idempotency experiment        | Validated     |
-| Remote idempotent retention integration        | Not yet implemented |
+| Remote state-idempotent retention (P3-2B)      | Implemented   |
+| Retention failure legibility (P3-2C)           | Implemented   |
+| Cross-phase P3-2 integration coverage (P3-2D) | Implemented   |
 | VLSI engineering workers                       | Planned       |
 | Coordinator execution                          | Planned       |
 | Parallel worker fan-out                        | Planned       |
@@ -186,15 +221,20 @@ fan-out to test.
 
 **P3-1 — local concurrency (implemented).** The idempotency ledger previously had no synchronization
 at all, so concurrent retains could lose local updates and write the same case to Hindsight twice.
-The fix is a **process-local lock keyed on the ledger's resolved path** — not on the instance —
-because a new store (and therefore a new ledger) is constructed on every `build_port()` call, so two
-instances on one ledger file must share one lock.
+The fix is a **process-local lock keyed on the normalized, resolved ledger path** — not on the
+instance — because a new store (and therefore a new ledger) is constructed on every `build_port()`
+call, so two instances on one ledger file must share one lock.
 
+- The lock is a **`threading.RLock`**, and is **shared by every store using the same ledger path**, so
+  cross-store access to one ledger file is serialized, not just access within one instance.
+- The **retain path is serialized as a whole**: the idempotency check, the remote write and the local
+  record all happen inside one critical section, which is what prevents the same case being written
+  remotely twice.
+- The **ledger is refreshed before the idempotency check**, so a second store on the same path sees a
+  write made by the first rather than acting on a stale snapshot.
 - Concurrent ledger updates are protected against lost updates.
-- Same-case concurrent retention is serialized, producing exactly one remote write.
-- The ledger is re-read before the duplicate check, so a second store sees the first store's write.
-- **`recall()` does not acquire the ledger lock.** It touches no ledger state, and locking it would
-  serialize reads for no correctness gain.
+- **`recall()` is intentionally not serialized by the retain lock.** It touches no ledger state, and
+  locking it would serialize reads for no correctness gain.
 - The synchronization is **process-local**. It does not coordinate separate processes.
 
 **What this does not provide:** it does **not** provide distributed exactly-once semantics. A lock
@@ -222,9 +262,9 @@ Therefore
 document_id = case_key  +  update_mode = "replace"
 ```
 
-has **not** been integrated. The prerequisite is a **case-identity and keying audit** — specifically,
-confirming that the case key is specific enough that two distinct cases can never share it. A 16-hex
-collision is not the concern; an over-broad key is.
+is now integrated, on a case identity that is specific enough that two distinct cases cannot share a
+`document_id`. A 16-hex collision is not the concern; an over-broad key was, and the outcome digest
+is what closed it.
 
 ### A constraint on future parallel fan-out
 
@@ -242,39 +282,175 @@ It is, however, an important constraint: a future parallel fan-out cannot assume
 synchronous client is safe across workers, and the client question is a live follow-up before
 parallel worker execution.
 
+### P3-2 status — implemented, with a documented residual gap
+
+**State-idempotent remote retention is now implemented (Phase A + P3-2B).** The retain call carries
+`document_id=case_key` with `update_mode="replace"`, and the case identity is content-addressed, so
+retaining the same case again converges on **one** remote document instead of creating a second.
+
+**Failure legibility is implemented (Phase C).** Retention failures are typed and
+distinguishable — `persist`, `ambiguous`, `unavailable` — and a corrupt ledger is surfaced rather than
+silently read as empty. See [Failure legibility](#failure-legibility-p3-2c-implemented).
+
+**Cross-phase coverage is implemented (Phase D).** Deterministic tests cover the joins between the
+phases, not just each in isolation: the computed identity reaching `document_id`, one identity used
+consistently across ledger, metadata and remote document, the key surviving into recall and
+`dedupe_by_case`, and P3-1's serialized retain composing with P3-2B's document identity under
+concurrency.
+
+**What is still NOT implemented:** local/remote atomicity, automatic reconciliation, cross-process
+locking, and resource limits. **Exactly-once is not claimed and is not achievable** — a retry still
+issues another remote request and pays another extraction cost.
+
+- **Local ledger persistence and remote Hindsight retention are two separate systems.** The ledger is
+  a local JSON file; the memory is a remote service. There is no transaction spanning them.
+- **Local synchronization cannot provide cross-system exactly-once semantics.** P3-1's lock provides
+  process-local mutual exclusion. A lock cannot make a remote write and a local write atomic together.
+- **The synchronous retain path exposes no idempotency key.** `operation_id` exists in the client but
+  is honoured only for asynchronous retain; the client warns if it is passed to a synchronous call.
+  The synchronous response also carries no remote memory identifier, so there is no handle to
+  reconcile against. This remains unchanged — `operation_id` and `retain_async` are not used.
+- **A usable remote primitive was confirmed live and is now adopted.** A fixed `document_id` with
+  `update_mode="replace"` gives *state-idempotent* replacement, including after an ambiguous outcome.
+- **`replace` is destructive, and safety comes from the identity, not the mode.** It overwrote the
+  first case's content in the experiment, so it is only safe because `case_key` is content-addressed:
+  two cases that genuinely differ cannot share a `document_id`. Changing the identity formula would
+  weaken this guarantee.
+- **Session identity must not be lost when deriving the remote identity.** The case key is
+  `sha256(problem_signature | session_id | outcome_digest)[:16]`, and `MemoryCase.to_dict()` did not
+  serialize `session_id` — so a case that round-tripped through serialization silently lost part of
+  its own identity. **Fixed and pinned by tests.**
+- **The synchronous Hindsight client is not thread-safe.** Live testing raised a `RuntimeError` under
+  concurrent synchronous retains. This constrains parallel fan-out (P5); it does not affect serial
+  retention.
+- **Exactly-once is not claimed.** The strongest defensible description is *state-idempotent*: an
+  identical repeat converges on the same remote state, while the operation itself is performed again,
+  at another extraction/token cost.
+
+### Planned P3-2 implementation
+
+This is the intended sequence. It is **not** a description of completed code, and no phase below has
+been started.
+
+**Phase A — case identity.** *(begun)* Make the case identity specific enough that two genuinely
+different cases cannot collide, and stop losing session identity on the way through serialization and
+the retention flow. Establish the identity contract with deterministic tests before it is used for
+anything remote.
+
+**Phase B — remote state-idempotent retention.** *(implemented)* The corrected case identity is used as
+the Hindsight `document_id` with `update_mode="replace"`, so a repeated retain converges on one remote
+document. Documented as *state-idempotent replacement*, explicitly **not** exactly-once operation
+semantics, with the destructive-replace risk recorded.
+
+**Phase C — failure legibility.** *(implemented)* The failure modes are now distinguishable rather than
+ambiguous: a typed `persist` failure when the remote write may have succeeded but the local ledger
+could not be written; an `ambiguous` failure when the remote outcome is genuinely unknown, kept
+distinct from a clean `unavailable`; corrupt ledger state surfaced instead of silently read as
+empty; and the retain response's own success flag verified rather than assumed. There is still **no
+automatic retry and no automatic reconciliation** — an ambiguous outcome is escalated, not resolved.
+
+**Phase D — regression and integration coverage.** *(implemented)* Deterministic tests cover the
+complete A → B → C contract, including the joins between the phases: the computed identity reaching
+`document_id`, one identity used consistently across the ledger, Hindsight metadata and the remote
+document; the computed key surviving into recall and `dedupe_by_case`; and P3-1's serialized retain
+composing with P3-2B's document identity under concurrency. No sleeps and no timing-dependent
+assertions.
+
+### Failure legibility (P3-2C, implemented)
+
+A caller can now tell three retention failures apart, because they need different handling:
+
+| `MemoryFailure.kind` | Meaning | What the caller must not assume |
+|---|---|---|
+`persist` | The remote write **may have succeeded**; the local ledger could not be written | Not that nothing was stored. The remote document may exist; it was **not** rolled back and cannot be from here |
+`ambiguous` | The transport broke with **no answer**, after the request may have been transmitted | Not that the case was stored, nor that it was not. The remote outcome is **unknown** |
+`unavailable` | The service answered, and the answer was a failure | Safe to treat as a clean retry — nothing was stored |
+
+Details:
+
+- **No raw `OSError` escapes the memory layer.** A local write failure after a successful remote
+  write is raised as a typed persistence failure that states the remote document may already exist.
+  Previously it leaked a bare `OSError` straight through `MemoryPort`.
+- **Ambiguity is not assumed.** Only transport failures that leave the remote outcome unknown are
+  ambiguous — read timeouts, connection resets, interrupted responses. A failure that provably
+  happened *before* the request reached the service (DNS failure, connection refused, connect
+  timeout) is a **clean** failure, because nothing could have been stored. Any HTTP response,
+  including 5xx, is clean: the service answered.
+- **`success=False` is not recorded as a successful retain.** If Hindsight reports that it did not
+  store the case, the idempotency ledger is not updated, rather than marking a case retained that is
+  not retrievable.
+- **A corrupt ledger is surfaced, not silently emptied.** A malformed, unreadable, or
+  version-incompatible ledger raises a persistence failure instead of reading as "this agent has
+  retained nothing" — which would otherwise re-retain every case. The corrupt file is **never**
+  overwritten or deleted, and a *missing* ledger on first use remains normal.
+
+**What this does not do:** it does not close the cross-system atomicity gap. Local and remote are
+still not in a transaction, so a `persist` failure still means the two are out of step. There is
+**no automatic retry** and **no automatic reconciliation** — an ambiguous outcome stays ambiguous and
+is escalated to the engineer. A retry remains state-idempotent at the remote document (P3-2B) but
+is still another remote operation and another extraction cost.
+
+### Explicitly out of scope
+
+None of the following is solved, and none should be read as solved:
+
+- Exactly-once distributed retention.
+- Cross-process ledger locking. P3-1's lock is process-local.
+- Automatic reconciliation when the remote outcome is unknown.
+- Local/remote atomicity across a `persist` failure.
+- Any Hindsight server-side transaction spanning the remote write and the local ledger.
+- Migration to asynchronous retain with `operation_id`, unless separately approved.
+- Undocumented or unverified `document_id` / `update_mode` semantics.
+- Synchronous Hindsight client thread-safety.
+
 ### Implementation roadmap
 
+Phase identifiers and gates follow
+[ADR 001](docs/adr-001-hub-spoke-coordinator.md).
+
 ```
-P0  Architecture decision
+P0  Architecture decision                                  implemented
     ↓
-P1  Agent delegation seam
+P1  Agent delegation seam                                  implemented
     ↓
-P2  LLM tool-calling seam
+P2  LLM tool-calling seam                                 implemented
     ↓
-P3  Memory/reliability hardening
+P3-0/P3-1  Memory concurrency hardening                   implemented
     ↓
-Case identity audit
+P3-2  Remote state-idempotent retention                   audited; capability confirmed; implementation pending
     ↓
-Remote state-idempotent retention
+P4  Memory Specialist only, single task, serial            not started
     ↓
-VLSI engineering capabilities
+P5  Parallel fan-out with join barrier and partial failure not started
     ↓
-Memory Specialist
+P6  Code/Log Verifier, then Patch Generator                not started
     ↓
-Code/Log Verifier
-    ↓
-Patch Generator
-    ↓
-Coordinator execution
-    ↓
-Parallel worker fan-out
-    ↓
-Multi-agent VLSI debugging workflows
+Multi-agent VLSI debugging workflows                      future
 ```
 
-This is an **implementation roadmap, not a statement that every stage is complete.** P0 through P3
-are done. The case identity audit is the immediate next step, because remote state-idempotent
-retention is unsafe to adopt before it.
+P4, P5 and P6 are reproduced from the ADR's migration table and are recorded here only as phase
+boundaries. **No speculative implementation detail is added for them here**, and the client
+thread-safety question remains an open prerequisite before P5.
+
+### Why the memory system does not cross the trust boundary
+
+The separation is a structural property of the code, not a convention that could drift.
+
+- **Memory is knowledge, not evidence.** Hindsight returns prior cases. They are context that can rank
+  a hypothesis; they are not observations of the current incident and cannot stand in for one.
+- **Memory does not authorize actions.** A retention decision is reported to the engineer and gates
+  nothing. Recalling a relevant case does not permit a change, and a confident recall does not
+  substitute for a decision.
+- **Evidence stays deterministic and independently verifiable.** Evidence is built from the engineer's
+  own statements, and repository reads and diffs describe the current state rather than opining about
+  it. It can be checked without trusting the model.
+- **Memory changes must not alter engineering truth.** The retained record, including failed
+  approaches, is written after the engineer's decision. Writing memory changes what is remembered
+  next time; it does not change what was true during this incident.
+- **Local memory bookkeeping is not an authority over engineering artifacts.** The ledger is an
+  idempotency optimization over a local file. It exists to avoid duplicate remote writes, and it must
+  never be able to stand in for evidence, or to decide that an engineering artifact should or should
+  not exist.
 
 ### Planned VLSI engineering direction
 

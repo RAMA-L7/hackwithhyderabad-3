@@ -15,7 +15,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 RELEVANCE_CLASSES = ("relevant", "partial", "irrelevant", "contradictory", "stale")
-FAILURE_KINDS = ("unavailable", "auth", "schema")
+# P3-2C adds two kinds so a caller can tell three situations apart:
+#   "unavailable"  - the remote call is known to have failed without storing (clean retry)
+#   "ambiguous"    - the remote outcome is UNKNOWN; the request may already have been applied
+#   "persist"      - the remote write may have succeeded, but the local ledger could not be written
+#                    (a cross-system atomicity gap; nothing was rolled back)
+# The two new kinds are additive, so every pre-existing "unavailable"/"auth"/"schema" caller is
+# unaffected.
+FAILURE_KINDS = ("unavailable", "ambiguous", "persist", "auth", "schema")
 
 
 class MemoryFailure(RuntimeError):
