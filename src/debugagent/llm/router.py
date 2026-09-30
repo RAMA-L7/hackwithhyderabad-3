@@ -22,11 +22,14 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from debugagent.llm.tools import (
+    MAX_CONVERSATION_CHARS,
+    MAX_TOOL_RESULT_CHARS,
     MAX_TOOL_TURNS,
     ToolCall,
     ToolCallError,
     ToolDefinition,
     ToolDefinitionError,
+    ToolResourceLimit,
     ToolResultMessage,
     parse_tool_calls,
     tool_choice_payload,
@@ -78,6 +81,10 @@ class LLMToolTurnLimit(LLMError):
 
 class LLMToolCallInvalid(LLMError):
     """The provider returned a malformed tool call. Raised, never coerced into empty arguments."""
+
+
+class LLMToolResourceLimit(LLMError):
+    """A P3-B resource limit was exceeded. The payload or conversation is refused, never truncated."""
 
 
 @dataclass(frozen=True)
@@ -397,6 +404,12 @@ class LLMRouter:
         all_results: list[ToolResultMessage] = []
 
         for turn in range(1, limit + 1):
+            # P3-B: the per-item limits in tools.py each keep one value small, but history grows
+            # across turns, so the running total is only visible here. Checked BEFORE the request:
+            # refusing locally is cheaper than paying the provider for a payload we will not send,
+            # and it fails with a typed error instead of an opaque provider rejection.
+            self._check_conversation_size(messages, definitions, choice, turn, attempts)
+
             message, record = self._tool_turn(route, messages, definitions, choice)
             attempts.append(record)
             if record.get("error_class"):
@@ -432,6 +445,16 @@ class LLMRouter:
                     raise ToolCallError(
                         f"execute_tool returned {type(result).__name__} for call {call.call_id!r}; "
                         "a ToolResultMessage is required")
+                # P3-B: enforce the result cap HERE as well as in `from_dict`. A host that builds
+                # ToolResultMessage(...) directly never goes through from_dict, so validating only
+                # there would let an oversized result into the history - and the history is what
+                # the conversation cap measures. Refused, not clipped, for the same reason.
+                if len(result.content) > MAX_TOOL_RESULT_CHARS:
+                    raise ToolResourceLimit(
+                        f"execute_tool returned {len(result.content)} chars for call "
+                        f"{call.call_id!r}, over the {MAX_TOOL_RESULT_CHARS} limit. Tool results "
+                        "are NOT truncated: a clipped result is indistinguishable from a "
+                        "complete one. Narrow the tool's output or page it.")
                 all_results.append(result)
                 messages.append(result.to_message())
 
@@ -439,6 +462,29 @@ class LLMRouter:
             f"tool loop reached max_turns={limit} without a final answer "
             f"({len(all_calls)} tool call(s) observed)",
             error_class="TOOL_TURN_LIMIT", attempts=attempts)
+
+    @staticmethod
+    def _conversation_size(messages: list[dict], definitions, choice) -> int:
+        """Total serialised size of one tool-mode request, as the provider would receive it."""
+        return (
+            len(json.dumps(messages, sort_keys=True, default=str))
+            + len(json.dumps([d.to_payload() for d in definitions], sort_keys=True, default=str))
+            + len(json.dumps(choice, sort_keys=True, default=str))
+        )
+
+    def _check_conversation_size(self, messages, definitions, choice, turn, attempts) -> None:
+        total = self._conversation_size(messages, definitions, choice)
+        if total <= MAX_CONVERSATION_CHARS:
+            return
+        # Deliberately not truncated, and not resumable: dropping the oldest tool result would leave
+        # an orphaned `tool` message with no matching call, and clipping the newest would hide
+        # evidence. The loop stops and names the turn so the caller can start a fresh, smaller one.
+        raise LLMToolResourceLimit(
+            f"tool loop conversation reached {total} chars at turn {turn}, over the "
+            f"{MAX_CONVERSATION_CHARS} limit, before any request was sent. The conversation is NOT "
+            "truncated: dropping history would orphan a tool result, and clipping one would hide "
+            "evidence. Start a fresh, smaller request or narrow the tool output.",
+            error_class="TOOL_RESOURCE_LIMIT", attempts=attempts)
 
     def _tool_turn(self, route: Route, messages: list[dict], definitions, choice) -> tuple[dict, dict]:
         """One provider round trip in tool mode. Returns the assistant message and an attempt record."""

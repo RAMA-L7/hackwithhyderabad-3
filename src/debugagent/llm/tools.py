@@ -29,6 +29,44 @@ TOOL_CHOICE_MODES = ("auto", "none")
 # small on purpose; a coordinator that cannot finish in four turns has lost the thread.
 MAX_TOOL_TURNS = 4
 
+# --- P3-B resource limits --------------------------------------------------------
+# P2 bounded TURNS only. These bound the other three axes, and they were left unbounded knowingly
+# (ADR 001, "Known limitation (P2): no resource limits on tool payloads"). The values are sized
+# from measured real payloads, not guessed: the six shipped seed cases render to 796-970 characters,
+# and an agent tool result is a file excerpt or a log tail, not a document.
+#
+# Every one of these REJECTS. None of them truncates. A truncated tool result is worse than an
+# oversized one: the model cannot tell a clipped log from a complete one, and a clipped log is
+# engineering evidence that looks whole. Failing closed keeps the ambiguity visible.
+#
+# Ownership follows the boundary each value protects:
+#   - per-item sizes and the per-turn call count: the data boundary, `parse_tool_calls` and
+#     `from_dict`, which are the only places that see an untrusted value before we act on it;
+#   - cumulative conversation size: the loop, which is the only place history accumulates;
+#   - tool-definition size: `ToolDefinition.from_dict`, before the definition is ever offered.
+
+# One assistant turn may not request more than this many tool calls. Three workers is the whole
+# planned roster, so 8 leaves headroom for a re-delegation without letting a single turn fan out
+# without bound.
+MAX_TOOL_CALLS_PER_TURN = 8
+
+# Serialised `arguments` for one call. A TaskSpec is a few hundred characters; 16k is ~30x that and
+# still small enough to read in a log when a delegation goes wrong.
+MAX_TOOL_ARGUMENT_CHARS = 16_000
+
+# `content` of one tool result. Sized for a file excerpt or log tail, not a whole file. This is the
+# value that would otherwise be truncated to "fit"; it is refused instead.
+MAX_TOOL_RESULT_CHARS = 32_000
+
+# A tool `description` and its `input_schema`, combined, as offered to the provider.
+MAX_TOOL_DEFINITION_CHARS = 8_000
+
+# The whole accumulated message history, checked before every request. The per-item limits above
+# each allow a turn to stay small, but the history GROWS across turns, so only the loop can see the
+# running total. Roughly four maximum-size tool results plus overhead, which is beyond any planned
+# Coordinator path and exists to stop an unbounded conversation rather than to constrain a real one.
+MAX_CONVERSATION_CHARS = 256_000
+
 
 class ToolDefinitionError(ValueError):
     """A tool definition is malformed. Fails closed, like SchemaError in schemas.py."""
@@ -36,6 +74,16 @@ class ToolDefinitionError(ValueError):
 
 class ToolCallError(ValueError):
     """An assistant tool call is malformed: no id, unknown tool, or unparseable arguments."""
+
+
+class ToolResourceLimit(ToolCallError):
+    """A tool payload exceeded a P3-B resource limit. The payload is refused, never clipped.
+
+    Subclasses `ToolCallError` so every existing `except ToolCallError` handler keeps working: a
+    limit breach is a malformed input from the caller's point of view, and no existing caller needs
+    to learn a new exception type to stay correct. It is named separately so a host can tell a size
+    rejection apart from a structural one.
+    """
 
 
 @dataclass(frozen=True)
@@ -83,6 +131,15 @@ class ToolDefinition:
             errors.append(f"{label}.input_schema.properties: expected object")
         if errors:
             raise ToolDefinitionError(f"{label}: " + "; ".join(errors))
+        # P3-B: bound the definition as offered, before it reaches the provider. Structural
+        # validation passed above, so this is a size question only.
+        offered = len(str(description)) + len(json.dumps(schema, sort_keys=True))
+        if offered > MAX_TOOL_DEFINITION_CHARS:
+            raise ToolDefinitionError(
+                f"{label}: definition is {offered} chars, over the "
+                f"{MAX_TOOL_DEFINITION_CHARS} limit (name, description and input_schema). "
+                "Shorten the description; it is not truncated."
+            )
         return cls(name=str(name), description=str(description), input_schema=dict(schema))
 
     @classmethod
@@ -159,6 +216,15 @@ class ToolResultMessage:
             errors.append(f"{label}.ok: expected boolean")
         if errors:
             raise ToolCallError(f"{label}: " + "; ".join(errors))
+        # P3-B: this is the limit that matters most. A clipped tool result is engineering evidence
+        # that looks complete - a truncated log reads as a whole log. Refuse instead, and say so,
+        # so the host can narrow the query.
+        if len(content) > MAX_TOOL_RESULT_CHARS:
+            raise ToolResourceLimit(
+                f"{label}.content: {len(content)} chars, over the {MAX_TOOL_RESULT_CHARS} limit. "
+                "Tool results are NOT truncated, because a clipped result is indistinguishable "
+                "from a complete one. Narrow the query or page the output."
+            )
         return cls(call_id=str(call_id), name=str(name), content=str(content), ok=bool(ok))
 
 
@@ -173,6 +239,13 @@ def parse_tool_calls(message: dict, known: set[str], label: str = "tool_calls") 
         return ()
     if isinstance(raw, (str, bytes)) or not isinstance(raw, list):
         raise ToolCallError(f"{label}: expected array, got {type(raw).__name__}")
+    # P3-B: count first, so an oversized turn is refused before any of it is parsed or executed.
+    if len(raw) > MAX_TOOL_CALLS_PER_TURN:
+        raise ToolResourceLimit(
+            f"{label}: {len(raw)} tool calls in one turn, over the "
+            f"{MAX_TOOL_CALLS_PER_TURN} limit. None were executed. Delegate in smaller turns; the "
+            "turn is not truncated."
+        )
     calls: list[ToolCall] = []
     seen: set[str] = set()
     for index, item in enumerate(raw):
@@ -210,6 +283,15 @@ def parse_tool_calls(message: dict, known: set[str], label: str = "tool_calls") 
         else:
             raise ToolCallError(f"{where}.function.arguments: expected JSON string, "
                                 f"got {type(raw_arguments).__name__}")
+        # P3-B: bound the serialised arguments. Refused, not clipped: silently dropping keys would
+        # hand the tool a different request than the model made.
+        serialised = json.dumps(arguments, sort_keys=True)
+        if len(serialised) > MAX_TOOL_ARGUMENT_CHARS:
+            raise ToolResourceLimit(
+                f"{where}.function.arguments: {len(serialised)} chars, over the "
+                f"{MAX_TOOL_ARGUMENT_CHARS} limit. The arguments are not truncated; send smaller "
+                "inputs or a file path instead of inlined content."
+            )
         calls.append(ToolCall(call_id=call_id, name=name, arguments=arguments))
     return tuple(calls)
 

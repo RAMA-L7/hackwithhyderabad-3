@@ -6,6 +6,7 @@ from debugagent.llm.router import (
     LLMError,
     LLMRouter,
     LLMToolCallInvalid,
+    LLMToolResourceLimit,
     LLMToolTurnLimit,
     LLMToolUnsupported,
     LLMUnavailable,
@@ -15,12 +16,18 @@ from debugagent.llm.router import (
     ToolLoopResult,
 )
 from debugagent.llm.tools import (
+    MAX_CONVERSATION_CHARS,
+    MAX_TOOL_ARGUMENT_CHARS,
+    MAX_TOOL_CALLS_PER_TURN,
+    MAX_TOOL_DEFINITION_CHARS,
+    MAX_TOOL_RESULT_CHARS,
     MAX_TOOL_TURNS,
     TOOL_CHOICE_MODES,
     ToolCall,
     ToolCallError,
     ToolDefinition,
     ToolDefinitionError,
+    ToolResourceLimit,
     ToolResultMessage,
 )
 
@@ -33,6 +40,11 @@ __all__ = [
     "LLMToolTurnLimit",
     "LLMToolUnsupported",
     "LLMUnavailable",
+    "MAX_CONVERSATION_CHARS",
+    "MAX_TOOL_ARGUMENT_CHARS",
+    "MAX_TOOL_CALLS_PER_TURN",
+    "MAX_TOOL_DEFINITION_CHARS",
+    "MAX_TOOL_RESULT_CHARS",
     "MAX_TOOL_TURNS",
     "Route",
     "StructuredOutputError",
@@ -43,5 +55,6 @@ __all__ = [
     "ToolDefinition",
     "ToolDefinitionError",
     "ToolLoopResult",
+    "ToolResourceLimit",
     "ToolResultMessage",
 ]
