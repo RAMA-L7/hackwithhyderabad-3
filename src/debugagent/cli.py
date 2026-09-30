@@ -17,6 +17,8 @@ import os
 import sys
 from pathlib import Path
 
+from debugagent.agents.memory_specialist import MemorySpecialist
+from debugagent.composition import CompositionError, build_runtime
 from debugagent.llm import LLMError, LLMRouter
 from debugagent.pipeline.evidence import EvidenceError
 from debugagent.pipeline.ingest import load_debug_input
@@ -217,17 +219,23 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         if port is None:
             port = make_port(args.memory, state)
             owns_port = True
+        # THE composition root for memory objects. One port -> one Coordinator -> one MemoryLane, built
+        # here and injected below, rather than assembled per session by whoever calls `investigate()`.
+        # `build_runtime` is idempotent per client, so a host process that drives several sessions
+        # through this same function gets one lane for all of them; and a second Coordinator over the
+        # same client is refused rather than silently allowed to defeat the serial memory lane.
+        runtime = build_runtime(port, memory_specialist=MemorySpecialist(port))
         if args.input:
             raw = load_debug_input(args.input)
             engineer.say(f"Issue loaded from {args.input}: {raw.description.splitlines()[0]}")
         else:
             raw = engineer.read_input()
-        session = investigate(raw, port, llm, engineer, on_step=save)
+        session = investigate(raw, port, llm, engineer, on_step=save, coordinator=runtime.coordinator)
     except KeyboardInterrupt:
         print("\naborted; nothing retained", file=err)
         return 130
     except (AbortSession, InputError, NormalizationError, SchemaError, EvidenceError, VerificationError,
-            MemoryFailure, LLMError) as exc:
+            MemoryFailure, LLMError, CompositionError) as exc:
         # one line, always: backend messages can carry newlines and raw HTTP headers (Hindsight 504, 2026-09-28)
         print(f"error: {' '.join(str(exc).split())[:300]}", file=err)
         return 1
@@ -237,8 +245,9 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         # prints "Unclosed client session" / "Unclosed connector". Only a port this function created
         # is closed - an injected port belongs to the caller.
         if owns_port and port is not None:
-            from debugagent.pipeline.memory_adapter import close_port
-            close_port(port)
+            # Unbind before closing: the binding is weak, but dropping it explicitly keeps the
+            # registry empty for a process that composes more than one runtime in turn.
+            runtime.close()
     engineer.say(f"session {session.session_id} saved to {last}; run 'inspect' for the trace")
     return 0
 

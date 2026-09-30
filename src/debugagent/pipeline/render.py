@@ -32,6 +32,76 @@ def _env(environment: dict) -> str:
     return ", ".join(f"{k}={v if v is not None else 'unknown'}" for k, v in environment.items()) or "none recorded"
 
 
+def render_worker_verifier(report: dict) -> str:
+    """The Code/Log Verifier's findings: current-system OBSERVATIONS, ranked, never decisions.
+
+    Deliberately separate from `render_evidence`, and deliberately never fed one. These are what a
+    worker read in a file or a log; the engineer still confirms them, exactly as they confirm any
+    observation. Folding them into the evidence set would let a worker's read of a file stand as a
+    verified fact about the system.
+    """
+    lines = ["Code/Log Verifier: observations of the CURRENT system. Not an evidence item, not a "
+             "verification, and not a verdict - you confirm these."]
+    findings = report.get("findings") or []
+    if not findings:
+        # A clean stage that found nothing says so, rather than rendering as though it had.
+        lines += ["", "No observation was reported. That is a clean run with nothing to show, not a "
+                      "claim that the current system was verified."]
+        return "\n".join(lines)
+    for index, finding in enumerate(findings, start=1):
+        lines += ["", f"[{finding['kind']}] {index}. {finding['ref']}"]
+        if finding.get("score"):
+            lines.append(f"    (matches {finding['score']} term(s) from this issue)")
+        lines += _wrap(finding.get("content", ""), "    ")
+    if report.get("findings_truncated"):
+        lines += ["", f"Showing {len(findings)} of {report['findings_total']} findings; the rest were "
+                      f"not shown."]
+    for refusal in report.get("refusals") or []:
+        lines += ["", f"REFUSED: {refusal['task_id']} - {refusal['error']}"]
+    return "\n".join(lines)
+
+
+def render_patch_proposals(report: dict) -> None | str:
+    """The Patch Generator's proposals. Nothing here is applied, and nothing is verified.
+
+    The wording is deliberate and load-bearing: a proposal is a candidate change, so the section must
+    never read as a fix, a diff that was applied, or a change anyone has tested.
+    """
+    lines = ["Patch Generator: PROPOSALS only. Nothing here has been applied, written, committed or "
+             "run, and no proposal is applied automatically."]
+    proposals = [result for result in (report.get("proposals") or [])]
+    if not proposals:
+        lines += ["", "No proposal was produced."]
+        return "\n".join(lines)
+    for result in proposals:
+        lines += ["", f"[proposal] {result.get('task_id')}"]
+        for observation in result.get("observations") or []:
+            lines += _wrap(observation.get("content", ""), "    ")
+    for refusal in report.get("refusals") or []:
+        lines += ["", f"REFUSED: {refusal['task_id']} - {refusal['error']}"]
+    return "\n".join(lines)
+
+
+def render_memory_delegation(report: dict) -> str:
+    """P4: the Memory Specialist's own report, shown as MEMORY and labelled as such.
+
+    Deliberately a separate function from `render_memory`, and deliberately never fed an
+    `Evidence`: the worker's observations are knowledge retrieved through the delegation seam, and
+    this renders them without ever presenting them as current-system evidence.
+    """
+    status = report.get("status", "failed")
+    header = (f"Memory Specialist ({report.get('agent', 'memory_specialist')}): {status}."
+              " Past experience, not evidence about this issue.")
+    if status == "failed":
+        return "\n".join([header, "", f"Memory unavailable: {report.get('failure_detail') or 'unknown'}.",
+                          "The proposal will be generic."])
+    lines = [header]
+    for observation in report.get("observations") or []:
+        lines += ["", f"[memory] {observation.get('ref')}"]
+        lines += _wrap(observation.get("content", ""), "    ")
+    return "\n".join(lines)
+
+
 def render_memory(memory: MemoryContext, current_env: dict) -> str:
     lines = [f"Past cases from bank '{memory.bank_id}'. Prior experience, not evidence about this issue."]
     if memory.abstained:

@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted (Design Phase — P0). Implementation progress: **P0, P1, P2, P3-0 and P3-1 are
-implemented**; **P3-2 is audited with implementation pending**; P4, P5 and P6 are not started.
+Accepted (Design Phase — P0). Implementation progress: **P0, P1, P2, P3-0, P3-1, P3-2, P3-B and P4
+are implemented**, and the P4 worker is wired into the demo flow. P5 and P6 are not started.
 
 This ADR was itself documentation only, and it did not authorise implementation beyond P0. Subsequent
 phases were implemented on their own gates, recorded in [Migration Phases](#migration-phases) below;
@@ -164,10 +164,12 @@ recorded in this ADR on purpose.
 
 The real host and tool-execution layer must establish resource limits before any worker is executed —
 at minimum a cap on tool calls per turn, a cap on tool-result content size, and a cap on total
-conversation size. This is **still outstanding**: P3-0/P3-1 completed the concurrency half of P3 and
-did not add these limits, so they remain a prerequisite before **P4** (the first real worker) or
-**P5** (parallel fan-out, which multiplies the payload by the number of concurrent workers). Until
-then, tool payloads are unbounded and this limitation is knowingly accepted.
+conversation size. **Resolved by P3-B**: `MAX_TOOL_CALLS_PER_TURN` (8),
+`MAX_TOOL_ARGUMENT_CHARS` (16k), `MAX_TOOL_RESULT_CHARS` (32k), `MAX_TOOL_DEFINITION_CHARS` (8k) and
+`MAX_CONVERSATION_CHARS` (256k) are enforced at the boundary each protects, so the prerequisite before
+**P4** and **P5** is met. **Every limit refuses rather than truncates**: a clipped tool result is
+indistinguishable from a complete one, and a clipped log is engineering evidence that looks whole,
+which the trust hierarchy forbids. Values are sized from measured real payloads, not invented.
 
 ### Agent Definition Payloads
 
@@ -300,13 +302,14 @@ Each phase is independently shippable and revertible; each has an explicit gate.
 | **P1** | Delegation **seam** only: `TaskSpec`, `WorkerContext`, `SubAgentResult`, closed worker registry, tool authorization, anti-recursion enforcement, context-isolation structures. No LLM changes, no tool calling, no worker execution. | unit tests for the anti-recursion rule | done — 37 tests |
 | **P2** | Tool calling: `tools`/`tool_choice` in `LLMRouter`, assistant `tool_calls` turn, `role: "tool"` results, bounded turn loop, `task` execution. Default path byte-identical. | all prior tests green; new tool-loop tests | done — 46 tests |
 | **P3-0/P3-1** | Deterministic concurrency regression coverage, then process-local concurrency safety for `HindsightMemoryStore` (path-keyed lock + single writer). | concurrent recall/retain test | done — 12 concurrency tests |
-| **P3-2** | Cross-system retention: local ledger persistence vs remote Hindsight write. Phase A case identity; P3-2B state-idempotent remote replacement (`document_id=case_key`, `update_mode="replace"`); P3-2C failure legibility (typed `persist` / `ambiguous` / `unavailable`, `success=False` handling, corrupt-ledger surfacing); P3-2D cross-phase integration coverage. Local/remote atomicity still outstanding. | identity-contract, failure-classification and cross-phase integration tests | in progress — A, B, C, D done |
-| **P4** | Memory Specialist only, single task, serial. | Acts 1–4 rehearsal on fresh banks, output unchanged | not started |
-| **P5** | Parallel fan-out with join barrier and partial failure. | latency and failure-injection tests | not started |
-| **P6** | Code/Log Verifier, then Patch Generator. | trust-rule regression suite green | not started |
+| **P3-B** | Resource limits on tool payloads and the conversation, enforced at the data boundary and the loop. Refuses, never truncates. | limit tests incl. at-the-boundary acceptance | done — 29 tests |
+| **P3-2** | Cross-system retention: local ledger persistence vs remote Hindsight write. Phase A case identity; P3-2B state-idempotent remote replacement (`document_id=case_key`, `update_mode="replace"`); P3-2C failure legibility (typed `persist` / `ambiguous` / `unavailable`, `success=False` handling, corrupt-ledger surfacing); P3-2D cross-phase integration coverage. Local/remote atomicity still outstanding. | identity-contract, failure-classification and cross-phase integration tests | done — A, B, C, D |
+| **P4** | Memory Specialist only, single task, serial, wired into the demo flow. | Acts 1–4 rehearsal on fresh banks, output unchanged | done — 28 rehearsal + 26 wiring tests |
+| **P5** | Serial memory lane, composition root, then parallel fan-out with join barrier and partial failure - non-client work only. | client-serialisation, composition and fan-out tests | lane, composition root and fan-out done - 29 fan-out tests; no P6 worker exists |
+| **P6** | Code/Log Verifier, then Patch Generator. | authority-boundary and fan-out concurrency tests | done - 42 + 41 tests |
 
-Suite at the P3-1 checkpoint: 349 tests, 9 skipped. **P3-2 Phases A, B, C and D have since landed**,
-taking the suite to **455 tests, 9 skipped**.
+Suite at the P3-1 checkpoint: 349 tests, 9 skipped. **P3-2 Phases A–D, P3-B and P4 have since
+landed**, taking the suite to **583 tests, 9 skipped** (529 before the P4 demo-flow wiring).
 
 **P3-2, in brief.** A live capability experiment established that a fixed Hindsight `document_id` with
 `update_mode="replace"` gives *state-idempotent* remote replacement, including after an ambiguous
@@ -329,9 +332,160 @@ identity used consistently across ledger/metadata/remote document, the key survi
 `dedupe_by_case`, and P3-1's serialized retain composing with P3-2B's document identity under
 concurrency.
 
+**P4** lands the first real worker: `MemorySpecialist`, one task at a time, serial, through the
+existing `MemoryPort` seam. Three properties are structural rather than instructional. It is
+constructed with a `MemoryPort` and never an evidence builder, so recalled content has no path into
+evidence construction. A clean empty recall is a SUCCESS carrying the abstention reason while an
+unreachable backend is a FAILURE with a `failure_kind`, so "failure is never nothing found" holds.
+And retention is refused by the worker itself, because recording an engineering outcome is the
+engineer's decision. Failures are matched structurally on `kind` rather than by `isinstance`, which
+keeps the agents package free of any Phase 1 pipeline import while still handling the real
+`HindsightMemoryPort` exception. The Coordinator, the Code/Log Verifier, the Patch Generator, and
+parallel fan-out remain unimplemented.
+
+The **P4 gate rehearsal** has passed. Each act fixture in `demo/inputs/` is normalised through the
+real `load_debug_input` / `normalize` path, and the resulting signature is dispatched through
+`build_task_spec` -> `authorize()` -> `MemorySpecialist` against a **fresh bank directory per act**,
+seeded with the real seed cases, so the real `classify_candidates` scoring runs on genuine stored
+memory. All four acts recall; the abstention path, the backend-failure path and the retention refusal
+are each exercised. The rehearsal found and fixed a real defect: the worker read `view["candidates"]`
+while `HindsightMemoryPort` nests the rows under `view["report"]["candidates"]`, so **every** recall
+would have reported "no relevant past case" against a live port. The 45 unit tests did not catch it
+because they supplied a flat view.
+
+Output contract unchanged: the result still round-trips through `SubAgentResult.from_dict`, carries
+only the six defined P1 fields, and a recall adds no ledger entry. `verify()` remains the authority —
+with a recorded engineer decision, a hypothesis citing a recalled case whose `region` the engineer
+never stated still resolves to `insufficient_evidence`, with the unknown field reported as a gap.
+
+**The worker is now wired into the demo flow.** `investigate()` accepts an optional
+`memory_specialist=`. The delegation goes through `build_task_spec` -> `authorize()`, and the report
+is recorded on `session.memory_delegation` and rendered as its own MEMORY section by
+`render_memory_delegation()`. Two properties were treated as non-negotiable:
+
+- **The default path is untouched.** With no worker — the Phase 1 default — `to_dict()` emits exactly
+  the keys it always did, rendering is byte-identical, and the trace is unchanged. The key is
+  conditional on the delegation having happened, so adding memory cannot alter existing demo output.
+- **The worker is a side channel, not a replacement.** The ranked `session.memory` the proposal is
+  built from is still produced by the existing `recall()`. The worker's observations are reported
+  separately and are never passed to `build_evidence`; retention still follows from the engineer's
+  resolution, never from the worker.
+
+A worker fault — an unreachable bank, an empty recall, or a worker that raises — is reported on the
+session and the investigation continues, because the engineer's session must not depend on a worker
+being available. `tests/test_p4_wiring_integration.py` drives 26 full sessions through the real flow
+to hold each of these. The trust rule is asserted in both of its directions: memory that would **fill**
+a gap still yields `insufficient_evidence`, and memory that would **differ** from stated evidence is
+surfaced in `mismatched_environment_fields` without downgrading a verdict the engineer reached. Each
+was checked by mutation — breaking the dispatch, the disclaimer, or the absent-worker key fails the
+corresponding test.
+
 **Still outstanding:** local/remote atomicity, automatic retry (there is none by design),
 reconciliation of an unknown remote outcome, and cross-process locking. The synchronous Hindsight
-client is **not thread-safe** under concurrent retain, which constrains P5.
+client is **not thread-safe** for concurrent access of any kind, reads included.
+
+**The P5 serial memory lane.** The audit that closed the thread-safety question found the store's
+`_retain_lock` cannot make the client safe: it is keyed on the **ledger path**, covers `retain` only,
+and does not exist during `__init__`. So serialisation was added one level up, on the Coordinator, as a
+`MemoryLane` that every Hindsight access passes through - the delegated worker, the flow's own direct
+`recall()`, and the retention write. `hindsight_store.py` is unchanged; its lock comment now states
+plainly what it does not protect. Three consequences are worth recording:
+
+- **The lane is per Coordinator, so P5 must use one Coordinator per client.** A Coordinator per session
+  would make the boundary per-session while the hazard is per-client. A `MemoryLane` may be shared
+  between Coordinators, and both behaviours are pinned by tests rather than left to a comment.
+- **The lane grants no authority.** Retention still follows only the engineer's resolution.
+- **P3-1's recall-may-overlap-retain guarantee holds for the fake client only.** Against the real
+  backend that overlap fails, and it is now prevented by the lane. The P3-1 test and its scope note say
+
+**The composition root.** A lane owned by a `Coordinator` is only as good as that Coordinator's reach,
+so `debugagent.composition` enforces the invariant where objects are assembled: one Hindsight client
+has exactly one `Coordinator` and therefore one `MemoryLane`. `cli.main()` is the real composition root
+and injects it; `investigate()` binds as well, so the rule holds for library callers. A second,
+different Coordinator over one client raises `CompositionError` rather than being discouraged - the
+failure it prevents (one lane per worker) would silently serialise nothing. The registry keys on the
+client rather than the port, so two ports over one client collide. `unbind` and `Runtime.close()` are
+the release paths; the value is held strongly on purpose so that sharing does not depend on a host
+retaining its own `Runtime`.
+
+**Fan-out.** `Coordinator.fan_out()` dispatches several authorised tasks in parallel and joins them. The
+client is the constraint rather than the CPU, so only work that never enters it is parallelised: the lane
+is taken per task, decided from the spec's own `allowed_tools` rather than from a per-worker flag, because a
+routed worker handling both memory and compute work would otherwise serialise its own computation. Memory
+tasks still enter the client one thread at a time. Authorisation runs first, in input order, outside the lane,
+so a refused task never starts a thread and does not abort its siblings; every task keeps its own outcome in
+input order, so no failure is hidden by a sibling's success and `refused` stays distinct from `failed`.
+Ordering is positional rather than completion-ordered, and a broken join barrier is reported as
+`joined=False` instead of a silently short result set. No retries, no backoff, and no exactly-once claim.
+
+**Client access is a structural capability.** Whether a task may skip the lane is decided by the
+registered `AgentDefinition's `client_access` field - part of the P1 capability model, not a second
+system - together with the task's own `allowed_tools`. Only `memory_specialist` is `client_access=True`;
+`code_log_verifier` and `patch_generator` are `False`. The field is REQUIRED rather than defaulted, because
+defaulting it to `True` would silently serialise compute work and defaulting it to `False` would let a
+client-touching agent escape the lane. Nothing on the worker object is consulted, so a worker cannot opt
+out of the shared lane by declaring itself non-client; a task cannot opt out by omitting memory tools, since
+a client-access agent is serialised for every task and a memory tool requested by a non-client agent is
+refused by `authorize()`.
+
+**The Code/Log Verifier (P6).** The second real worker, registered `client_access=False`, so its tasks run
+outside the shared lane and overlap freely while memory work stays serialised. Its only seam is a read-only
+`SourcePort`; there is no Hindsight import and a recalled case injected into the task context is refused
+rather than read, because a past case must not be laundered into an observation about the current system.
+Each step checks its tool against the task's `allowed_tools`, so a task granting `grep` alone cannot make the
+worker open a file. Insufficient input is explicit: no targets is a `schema` failure, a missing file is an
+observation saying so with contents never inferred, a batch where nothing could be read is `partial` rather
+than `success`, and a search that genuinely ran and matched nothing is a clean success that says exactly that.
+Observations carry `code:` / `log:` provenance and an in-content disclaimer, so they can be read as evidence
+The Patch Generator follows the same shape: registered `client_access=False`, tools `read` and `diff`, and a read-only `PatchSourcePort` with no mutating method, so there is no path from the worker to a modified working tree. Every artifact is prefixed `PROPOSED PATCH` and states it is unapplied and unverified. One file per proposal, because a multi-file change has no single correct diff base. Refusal, insufficient input (`schema`), repository fault (`unavailable`) and a successful proposal are four distinct outcomes, and missing input is never reported as `no patch needed` - that belongs only to a real comparison that found the proposal byte-identical.
+
+**Production adapters.** Both P6 workers are driven by real filesystem adapters, and the repository
+boundary is enforced in the adapter rather than in the worker, so the workers stay independent of how
+sources are stored. `RepositoryScope` resolves a candidate to a real path and refuses anything landing outside
+the root - `..` traversal, absolute paths elsewhere, and symlinks pointing out - and the check runs on the
+RESOLVED path, so a symlink cannot step outside. Glob patterns have their literal prefix resolved before the
+filesystem is consulted, and every match is re-checked; each is a net the other does not cover. Both ports are
+read-only: no write, apply, subprocess or VCS call exists in the module, proven by shape and by the repository
+being byte-identical after a full workflow. Every returned reference is repository-relative, so an artifact never
+discloses the checkout layout. `build_repository_runtime` composes both through the same root that composes
+memory, and a rejected path is reported as the worker's `schema` refusal rather than as a missing file.
+
+**Evaluation: Google ADK as the orchestration layer.** A prototype in `debugagent.adk_bridge` maps the
+
+**P6 decision: the workers join the flow, and the boundary holds where results land.**
+`investigate()` accepts an optional `repository` plus the caller's intent (`verifier_targets`,
+`patch_requests`) and records all three workers' contributions as one `session.workers` record. Two
+sub-decisions are worth recording as decisions rather than as implementation detail.
+
+First, verifier findings are EVIDENCE-SIDE but not `Evidence`. They describe the current system, unlike
+a recalled case, so they belong on that side of the line; but they are a worker's read of a file, and an
+unconfirmed observation must stay an observation. `evidence.py` and `verify.py` are therefore untouched
+and the findings are reported beside the evidence set rather than inside it. The alternative - folding
+them in - was rejected because it would let a worker's reading stand as a verified fact about the
+system, which is the exact failure mode the memory boundary exists to prevent, reached by the other door.
+
+Second, patch output is a PROPOSAL and stays inert. `patch_requests` must supply both a target and a
+proposed body, because a worker that picks its own target is a worker deciding what to change, and
+nothing in the flow writes, applies, commits or verifies a proposal. The Patch Generator's output is
+retained as a diff for the engineer to review, not executed.
+
+Consequences that are now enforced rather than merely intended: `authorize()` runs before every worker
+dispatch, because the stage reaches the workers only through `Coordinator.fan_out`; the stage holds no
+authoriser, lane or Coordinator of its own - it does not even import `Coordinator` - so it cannot become
+a second path to the client; and `investigate()` rejects a `repository` carrying a different Coordinator,
+because two Coordinators mean two lanes and the P5 hazard with them. Ranking is a total order over
+`(-score, kind, ref, task_id, content)` so the report cannot depend on completion order.
+three workers onto an ADK `Workflow` graph, `("START", (memory, verifier, patcher), join)`, and hands the
+work inside each node to the existing `Coordinator`. The verdict is that ADK should WRAP the Coordinator
+rather than replace it. The decisive finding is mechanical: a node body that blocks serialises the graph.
+Two blocking nodes under a fan-out measured 0.63s wall at a concurrency of 1, against 0.37s and 2 once
+offloaded with `asyncio.to_thread`. The workers are synchronous, so wiring `fan_out` directly into a node
+would have produced a graph that appears parallel and is not. ADK's `max_concurrency` is graph-wide and so
+cannot express the one thing that matters here - serialise the nodes that touch the non-thread-safe client,
+overlap the rest - and authorisation ordering, the refusal/failure split, `client_access` and the port
+boundaries are all better expressed where they already are. `google-adk` remains an optional dependency, not
+declared in `pyproject.toml`, and the bridge tests skip when it is absent.
+  so explicitly, so it is not read as clearance to run the real client concurrently.
 
 Explicitly deferred: no change to the EVIDENCE construction path, no threshold changes, no change to
 `verify()` or to engineer interaction.
