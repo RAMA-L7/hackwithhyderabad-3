@@ -105,6 +105,14 @@ new architecture, so it is out of scope for this audit. The honest current behav
 deterministically by `(-score, kind, ref, task_id, content)`, so the report is stable and correct, merely not
 as discriminating as a human reader would be.
 
+> **RESOLVED after this audit.** Relevance matching now compares a canonical form of the text, so the
+> config that states `client_max_body_size 2m` matches an issue that says "uploads over 2 MB". This was
+> done inside the existing scorer - no new dependency, no model, no network, and no change to the trust
+> boundary - rather than as the "new architecture" this entry deferred. The determinism guarantee below is
+> unaffected: the sort key is unchanged, and equivalent terms are counted once so widening the equivalence
+> table cannot inflate a score. Cross-unit reasoning (`500ms` versus `0.5 s`) remains out of scope,
+> because it needs arithmetic rather than a table. See `tests/test_p7_relevance_matching.py`.
+
 ## Mutation evidence
 
 Twelve mutations against the boundaries this audit claims to have proven. Every one is caught.
@@ -143,6 +151,8 @@ Suite totals: **1000 tests, 0 failures, 13 skipped** (was 942 before this audit;
 
 1. **Relevance is lexical** (above). An engineer reading the report must still judge relevance; the score is
    a hint, not a filter. The transcript says "observations", which is the correct word.
+   *(Partly addressed: matching is now canonical, so equivalent spellings match. Still no cross-unit
+   reasoning, and the score remains a hint rather than a filter.)*
 2. **Worker stage ordering is presentational.** If someone later wires findings into the prompt, the
    trust-boundary analysis in this document stops applying and needs redoing.
 3. **`investigate()` refuses a mismatched repository Coordinator late** — after evidence is built and memory

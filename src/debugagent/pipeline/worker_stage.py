@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Sequence
 
 from debugagent.agents.coordinator import FanOutResult, TaskOutcome
@@ -64,6 +65,188 @@ class RankedFinding:
                 "task_id": self.task_id, "source": self.source}
 
 
+# --- Relevance matching -----------------------------------------------------------------------
+#
+# Relevance is lexical, and lexical matching has one specific failure that matters for engineering
+# text: the same quantity is written differently in a ticket and in a log or a config file. The issue
+# says "uploads over 2 MB" and nginx says `client_max_body_size 2m`; the issue says "413 Request
+# Entity Too Large" and the log says "413". Neither is a spelling mistake, and a ranker that cannot see
+# that scores the actual culprit zero.
+#
+# So matching happens on a CANONICAL form of the text rather than on raw substrings. Nothing here
+# consults a model, a network or a clock: the tables below are small, explicit and total, and the whole
+# transformation is a pure function of the input string.
+
+#: Canonical unit -> the surface forms seen for it. Bare single letters are included because they are
+#: how configuration files abbreviate (`client_max_body_size 2m`, `proxy_read_timeout 30s`).
+#:
+#: `m` is read as MEGABYTES, which is the nginx and postgres convention and the case that motivated
+#: this. It is also the abbreviation for minutes in some prose, so "5 m" as a duration will not
+#: normalise; `min` covers minutes. The ambiguity is inherent to the abbreviation, not to this table.
+_UNIT_ALIASES: dict[str, tuple[str, ...]] = {
+    "b": ("b", "byte", "bytes"),
+    "kb": ("kb", "k", "kib", "kilobyte", "kilobytes"),
+    "mb": ("mb", "m", "mib", "megabyte", "megabytes"),
+    "gb": ("gb", "g", "gib", "gigabyte", "gigabytes"),
+    "tb": ("tb", "t", "tib", "terabyte", "terabytes"),
+    "ms": ("ms", "msec", "msecs", "millisecond", "milliseconds"),
+    "s": ("s", "sec", "secs", "second", "seconds"),
+    "min": ("min", "mins", "minute", "minutes"),
+    "h": ("h", "hr", "hrs", "hour", "hours"),
+    "pct": ("%", "pct", "percent", "percentage"),
+}
+_UNIT_LOOKUP: dict[str, str] = {
+    surface: canonical
+    for canonical, surfaces in _UNIT_ALIASES.items() for surface in surfaces
+}
+
+#: HTTP status code -> the reason phrases seen for it. A code is the stable form: "413" is not a
+#: phrase anyone rewrites, and RFC 9110 itself renamed 413 from "Request Entity Too Large" to
+#: "Content Too Large", so old and new logs disagree about the same status.
+#:
+#: 501 "Not Implemented" is deliberately absent: it is ordinary English that appears in source comments
+#: everywhere, and normalising it to a number would manufacture matches.
+_HTTP_STATUS_ALIASES: dict[str, tuple[str, ...]] = {
+    "400": ("bad request",),
+    "401": ("unauthorized", "unauthorised"),
+    "403": ("forbidden",),
+    "404": ("not found",),
+    "405": ("method not allowed",),
+    "408": ("request timeout",),
+    "409": ("conflict",),
+    "413": ("payload too large", "request entity too large", "request body too large",
+            "content too large"),
+    "414": ("uri too long", "request-uri too long"),
+    "415": ("unsupported media type",),
+    "422": ("unprocessable entity", "unprocessable content"),
+    "429": ("too many requests", "rate limit exceeded"),
+    "500": ("internal server error",),
+    "502": ("bad gateway",),
+    "503": ("service unavailable", "service temporarily unavailable"),
+    "504": ("gateway timeout", "gateway timeout error"),
+    "507": ("insufficient storage",),
+}
+
+#: The errors that appear by name in one system and by prose in another. These are the ones that show
+#: up in exactly this shape in Node and nginx logs.
+_ERROR_ALIASES: dict[str, tuple[str, ...]] = {
+    "econnreset": ("econnreset", "connection reset", "connection reset by peer"),
+    "etimedout": ("etimedout", "timed out", "timeout", "timed-out"),
+    "econnrefused": ("econnrefused", "connection refused"),
+    "enospc": ("enospc", "no space left", "no space left on device"),
+    "enoent": ("enoent", "no such file", "no such file or directory"),
+}
+
+#: Every multi-word phrase that collapses to a single canonical token, applied longest-first so
+#: "no space left on device" wins over "no space left". Built once, sorted, so the table's iteration
+#: order cannot vary between runs.
+_PHRASE_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = tuple(sorted(
+    ((re.compile(r"\b" + re.escape(surface) + r"\b"), canonical)
+     for canonical, surfaces in tuple(_HTTP_STATUS_ALIASES.items()) + tuple(_ERROR_ALIASES.items())
+     for surface in surfaces),
+    key=lambda pair: (-len(pair[0].pattern), pair[0].pattern),
+))
+
+_NUMBER_PATTERN = r"\d+(?:[.,]\d+)*"
+_TOKEN_RE = re.compile(f"({_NUMBER_PATTERN})|([a-z][a-z_]*)")
+_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+#: A number immediately followed by a unit word, with at most whitespace between: "2m", "2 MB", "30s".
+_MEASURE_RE = re.compile(rf"({_NUMBER_PATTERN})\s*([a-z%]+)")
+
+
+def _strip_thousands(text: str) -> str:
+    """`1,024` and `1024` are the same number. Only inside digit groups, so `20, 20` is untouched."""
+    return _THOUSANDS_RE.sub("", text)
+
+
+def _canonical_tokens(text: str) -> tuple[str, ...]:
+    """Reduce text to comparable tokens: equivalent spellings become identical tokens.
+
+    The transformation, in order: collapse HTTP reason phrases and named errors to their canonical code;
+    then tokenise, attaching a unit word to the number in front of it so `2 MB`, `2mb` and `2m` all
+    become the single token `2mb`. A thousands separator needs no step of its own here: the number
+    pattern consumes `1,024` whole and the comma is dropped when the token is appended.
+
+    A pure function of its input, cached because `rank_findings` asks the same question about the same
+    strings repeatedly. The cache is a speed device only: it cannot change a result, and the tables it
+    reads are module-level constants.
+    """
+    lowered = text.lower()
+    for pattern, canonical in _PHRASE_REPLACEMENTS:
+        lowered = pattern.sub(canonical, lowered)
+
+    tokens: list[str] = []
+    matches = list(_TOKEN_RE.finditer(lowered))
+    index = 0
+    while index < len(matches):
+        match = matches[index]
+        number, word = match.group(1), match.group(2)
+        if number is not None and index + 1 < len(matches):
+            following = matches[index + 1]
+            gap = lowered[match.end():following.start()]
+            unit = _UNIT_LOOKUP.get(following.group(2) or "")
+            # Only merge across whitespace: `2 pool` must not become `2pool`.
+            if unit is not None and gap.strip() == "":
+                tokens.append(f"{number.replace(',', '')}{unit}")
+                index += 2
+                continue
+        tokens.append((number or word).replace(",", ""))
+        index += 1
+    # Transport words say how the status travelled, not what happened, so "HTTP 413" and a bare "413"
+    # are the same observation. Dropping them keeps the status codes comparable.
+    collapsed: list[str] = []
+    for token in tokens:
+        # "413 Request Entity Too Large" is one status written twice once the phrase has been replaced
+        # by its code. Collapsing runs keeps the token list a set of distinct facts, which is what the
+        # contiguity check below compares.
+        if not collapsed or collapsed[-1] != token:
+            collapsed.append(token)
+    return tuple(token for token in collapsed if token not in _TRANSPORT_NOISE)
+
+
+#: Words that qualify how something was reported rather than what was reported.
+_TRANSPORT_NOISE = frozenset({"http", "https", "status", "code", "error", "err"})
+
+
+@lru_cache(maxsize=4096)
+def _canonical_tokens_cached(text: str) -> tuple[str, ...]:
+    return _canonical_tokens(text)
+
+
+def _phrase_present(term_tokens: tuple[str, ...], document: tuple[str, ...]) -> bool:
+    """Whether `term_tokens` occurs as a CONTIGUOUS run inside `document`.
+
+    Contiguity is what keeps this honest. A term matching terms scattered across a file would make a
+    long document match almost anything, which is how a ranker starts ranking by length instead of by
+    relevance.
+    """
+    if not term_tokens or len(term_tokens) > len(document):
+        return False
+    span = len(term_tokens)
+    for start in range(len(document) - span + 1):
+        if document[start:start + span] == term_tokens:
+            return True
+    return False
+
+
+def _unique_term_tokens(terms: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    """The terms, canonicalised, with equivalents collapsed to one.
+
+    The same measurement can reach the term list twice - stated as an environment value AND quoted in a
+    symptom - and once the canonical form exists those are visibly the same term. Counting both would
+    score one fact twice and let a verbose issue out-rank a precise one. Terms arrive sorted, so the
+    surviving order is deterministic.
+    """
+    unique: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
+    for term in terms:
+        tokens = _canonical_tokens_cached(term)
+        if tokens and tokens not in seen:
+            seen.add(tokens)
+            unique.append(tokens)
+    return tuple(unique)
+
+
 def _relevance_terms(case: Any) -> tuple[str, ...]:
     """The issue's own values, lower-cased, used only to rank - never to assert anything."""
     terms: list[str] = []
@@ -71,12 +254,20 @@ def _relevance_terms(case: Any) -> tuple[str, ...]:
         if value:
             terms.append(str(value).lower())
     for symptom in (getattr(case, "symptoms", None) or ()):
+        text = str(symptom).lower()
         # Word-ish tokens, punctuation stripped at the edges. Splitting on whitespace alone kept the
         # trailing separator - "fail;" and "ECONNRESET;" - so a term could never match the same word
         # appearing in a log line without that punctuation, and every score came back zero.
-        for token in re.findall(r"[a-z0-9][a-z0-9._+-]*", str(symptom).lower()):
+        for token in re.findall(r"[a-z0-9][a-z0-9._+-]*", text):
             if len(token) > 3:
                 terms.append(token)
+        # A measurement is also a term in its canonical form, which is the only way "2 MB" from a
+        # symptom can reach a config file saying `2m`: the bare number and the bare unit are each too
+        # short to survive the length filter above, but the pair is exactly the thing worth matching.
+        for number, unit in _MEASURE_RE.findall(_strip_thousands(text)):
+            canonical = _UNIT_LOOKUP.get(unit)
+            if canonical is not None:
+                terms.append(f"{number}{canonical}")
     # Sorted and de-duplicated so the term list - and therefore every score - is order-independent.
     return tuple(sorted({term for term in terms if term}))
 
@@ -111,11 +302,19 @@ def rank_findings(observations: Sequence[tuple[SubAgentResult, Any]], case: Any)
     """
     terms = _relevance_terms(case)
     signature = getattr(case, "problem_signature", "") or ""
+    # Each term is canonicalised once, not once per finding: the point of the canonical form is that
+    # equivalent spellings agree, and doing it per term per document would be the same answer more
+    # slowly.
+    term_tokens = _unique_term_tokens(terms)
     findings: list[RankedFinding] = []
     for result, _outcome in observations:
         for observation in result.observations:
             lowered = _scorable_text(observation.content, signature)
-            score = sum(1 for term in terms if term in lowered)
+            document = _canonical_tokens_cached(lowered)
+            # A term counts at most once however many ways it could have matched, so widening the
+            # equivalence table cannot inflate a score relative to a narrower one. The score stays
+            # "how many of the issue's own terms appear in what the worker read".
+            score = sum(1 for tokens in term_tokens if _phrase_present(tokens, document))
             findings.append(RankedFinding(
                 kind=observation.kind, ref=observation.ref, content=observation.content,
                 score=score, task_id=result.task_id, source=observation.source))

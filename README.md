@@ -523,7 +523,15 @@ Folding findings in would let a worker's read of a file stand as a verified prop
 
 Two details worth calling out. Findings are **ranked** by how many of the issue's own environment values
 and symptoms appear in them, with `(-score, kind, ref, task_id, content)` as the sort key - a total order,
-because a sort that can tie would make the output depend on which worker finished first. And
+because a sort that can tie would make the output depend on which worker finished first. Matching is done
+on a **canonical form** rather than on raw substrings, because engineering text says the same thing
+several ways and the raw version scored the actual culprit zero: `2 MB` matches `client_max_body_size 2m`,
+`413` matches `Request Entity Too Large` and `HTTP 413`, `30 s` matches `30sec`, and `ECONNRESET` matches
+`connection reset by peer`. That is a fixed table of units, status codes and named errors - no model, no
+network, no clock - and it deliberately stops at spelling: it will not tell you that `500ms` is `0.5 s`,
+because that needs arithmetic rather than a table. A better relevance signal is still only a hint, and a
+finding that matches everything still cannot become evidence.
+
 `investigate()` refuses a `repository` whose Coordinator is not the session's own: two Coordinators means
 two `MemoryLane`s, and the non-thread-safe client hazard with them.
 

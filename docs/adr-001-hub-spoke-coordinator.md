@@ -451,6 +451,17 @@ discloses the checkout layout. `build_repository_runtime` composes both through 
 memory, and a rejected path is reported as the worker's `schema` refusal rather than as a missing file.
 
 **Evaluation: Google ADK as the orchestration layer.** A prototype in `debugagent.adk_bridge` maps the
+three workers onto an ADK `Workflow` graph, `("START", (memory, verifier, patcher), join)`, and hands the
+work inside each node to the existing `Coordinator`. The verdict is that ADK should WRAP the Coordinator
+rather than replace it. The decisive finding is mechanical: a node body that blocks serialises the graph.
+Two blocking nodes under a fan-out measured 0.63s wall at a concurrency of 1, against 0.37s and 2 once
+offloaded with `asyncio.to_thread`. The workers are synchronous, so wiring `fan_out` directly into a node
+would have produced a graph that appears parallel and is not. ADK's `max_concurrency` is graph-wide and so
+cannot express the one thing that matters here - serialise the nodes that touch the non-thread-safe client,
+overlap the rest - and authorisation ordering, the refusal/failure split, `client_access` and the port
+boundaries are all better expressed where they already are. `google-adk` remains an optional dependency, not
+declared in `pyproject.toml`, and the bridge tests skip when it is absent.
+  so explicitly, so it is not read as clearance to run the real client concurrently.
 
 **P6 decision: the workers join the flow, and the boundary holds where results land.**
 `investigate()` accepts an optional `repository` plus the caller's intent (`verifier_targets`,
@@ -474,18 +485,11 @@ dispatch, because the stage reaches the workers only through `Coordinator.fan_ou
 authoriser, lane or Coordinator of its own - it does not even import `Coordinator` - so it cannot become
 a second path to the client; and `investigate()` rejects a `repository` carrying a different Coordinator,
 because two Coordinators mean two lanes and the P5 hazard with them. Ranking is a total order over
-`(-score, kind, ref, task_id, content)` so the report cannot depend on completion order.
-three workers onto an ADK `Workflow` graph, `("START", (memory, verifier, patcher), join)`, and hands the
-work inside each node to the existing `Coordinator`. The verdict is that ADK should WRAP the Coordinator
-rather than replace it. The decisive finding is mechanical: a node body that blocks serialises the graph.
-Two blocking nodes under a fan-out measured 0.63s wall at a concurrency of 1, against 0.37s and 2 once
-offloaded with `asyncio.to_thread`. The workers are synchronous, so wiring `fan_out` directly into a node
-would have produced a graph that appears parallel and is not. ADK's `max_concurrency` is graph-wide and so
-cannot express the one thing that matters here - serialise the nodes that touch the non-thread-safe client,
-overlap the rest - and authorisation ordering, the refusal/failure split, `client_access` and the port
-boundaries are all better expressed where they already are. `google-adk` remains an optional dependency, not
-declared in `pyproject.toml`, and the bridge tests skip when it is absent.
-  so explicitly, so it is not read as clearance to run the real client concurrently.
+`(-score, kind, ref, task_id, content)` so the report cannot depend on completion order. The score itself
+counts the issue's own terms found in what the worker quoted, compared on a canonical form so that
+equivalent spellings agree - `2 MB` with `2m`, `413` with `Request Entity Too Large`. That widens what
+counts as a match and deliberately does not widen what a finding may become: a better relevance signal is
+still a hint, and still neither evidence nor a verdict.
 
 Explicitly deferred: no change to the EVIDENCE construction path, no threshold changes, no change to
 `verify()` or to engineer interaction.
