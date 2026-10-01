@@ -267,11 +267,21 @@ class MemoryStaysSeparateTests(WiringBase):
                                  "recalled memory must not appear in EVIDENCE")
 
     def test_evidence_items_are_unchanged_by_the_wiring(self):
+        """The memory wiring must not add, remove or restate a single EVIDENCE item.
+
+        `captured_at` is excluded, and it has to be: `build_evidence` stamps it with the wall clock at
+        whole-second resolution, so two runs can never agree on it and the test would fail whenever
+        they happened to straddle a second. It is not part of this claim either - the claim is about
+        WHICH items exist and what they say, not about when the run looked.
+        """
+        def comparable(session):
+            return [{k: v for k, v in item.to_dict().items() if k != "captured_at"}
+                    for item in session.evidence.items]
+
         with_worker, _ = self.run_session(worker=MemorySpecialist(self.port()))
         self.setUp()
         without_worker, _ = self.run_session(worker=None)
-        self.assertEqual([i.to_dict() for i in with_worker.evidence.items],
-                         [i.to_dict() for i in without_worker.evidence.items])
+        self.assertEqual(comparable(with_worker), comparable(without_worker))
 
     def test_delegation_is_labelled_as_not_evidence(self):
         port = self.port()

@@ -17,6 +17,11 @@ import os
 import sys
 from pathlib import Path
 
+from debugagent.application.host import make_session_factory
+from debugagent.application.web_engineer import DEFAULT_DECISION_TIMEOUT_SECONDS
+from debugagent.application.web_server import DEFAULT_HOST as DEFAULT_UI_HOST
+from debugagent.application.web_server import DEFAULT_PORT as DEFAULT_UI_PORT
+from debugagent.application.web_server import SessionRegistry, serve as serve_ui
 from debugagent.agents.memory_specialist import MemorySpecialist
 from debugagent.composition import CompositionError, build_runtime
 from debugagent.llm import LLMError, LLMRouter
@@ -29,6 +34,49 @@ from debugagent.pipeline.types import OUTCOME_CLASSES, DebugInput, Evidence, Hyp
 from debugagent.pipeline.verify import EngineerDecision, VerificationError
 
 DEFAULT_MEMORY = "hindsight"
+
+
+def _add_memory_argument(parser) -> None:
+    parser.add_argument("--memory", default=DEFAULT_MEMORY,
+                        help="memory source: hindsight (default) or offline:<file>")
+
+
+def _serve_ui(args, state: Path, last: Path, save, out, err, *, llm, port) -> int:
+    """Run the browser UI. Same composition root as `debug`, different Engineer.
+
+    The server has no idea how to assemble an investigation - `host.py` does that, and this is
+    where the real port, LLM and Coordinator are handed to it. Nothing here is new wiring: it is
+    the same three objects the terminal path builds, in the same order, for the same reasons.
+    """
+    registry = SessionRegistry()
+    owns_port = False
+    try:
+        if llm is None:
+            load_env_file(args.env)
+            llm = LLMRouter.from_env()
+        if port is None:
+            port = make_port(args.memory, state)
+            owns_port = True
+        runtime = build_runtime(port, memory_specialist=MemorySpecialist(port))
+        factory = make_session_factory(registry=registry, port=port, llm=llm,
+                                       coordinator=runtime.coordinator,
+                                       timeout=args.decision_timeout,
+                                       on_complete=lambda session: save(session) if session else None)
+        if args.host not in ("127.0.0.1", "localhost", "::1"):
+            print(f"warning: {args.host} is not loopback. The UI has no login, no CSRF token"
+                  f" and no rate limiting; anything beyond this machine can drive it.", file=err)
+        serve_ui(host=args.host, port=args.port, build_investigation=factory, registry=registry)
+    except KeyboardInterrupt:
+        print("\nui stopped; nothing retained", file=err)
+        return 130
+    except (InputError, NormalizationError, SchemaError, EvidenceError, VerificationError,
+            MemoryFailure, LLMError, CompositionError, OSError) as exc:
+        print(f"error: {' '.join(str(exc).split())[:300]}", file=err)
+        return 1
+    finally:
+        if owns_port and port is not None:
+            runtime.close()
+    return 0
 
 
 class AbortSession(Exception):
@@ -186,8 +234,16 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
     debug.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
     debug.add_argument("--input", metavar="FILE",
                        help="read the issue from a .json/.yaml file instead of the first two prompts")
-    debug.add_argument("--memory", default=DEFAULT_MEMORY,
-                       help="memory source: hindsight (default) or offline:<file>")
+    _add_memory_argument(debug)
+    ui = commands.add_parser("ui", help="investigate issues in a local browser UI")
+    ui.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
+    ui.add_argument("--host", default=DEFAULT_UI_HOST,
+                    help=f"interface to bind (default {DEFAULT_UI_HOST})")
+    ui.add_argument("--port", type=int, default=DEFAULT_UI_PORT,
+                    help=f"port to listen on (default {DEFAULT_UI_PORT})")
+    ui.add_argument("--decision-timeout", type=float, default=DEFAULT_DECISION_TIMEOUT_SECONDS,
+                    help="seconds a blocked question waits for the engineer before the run is abandoned")
+    _add_memory_argument(ui)
     commands.add_parser("inspect", help="print the trace of the last session")
     args = parser.parse_args(argv)
     state = Path(state_dir)
@@ -205,11 +261,15 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
         return 0
 
     logging.basicConfig(level=logging.INFO, stream=err, format="  [%(name)s] %(message)s")
-    engineer = TerminalEngineer(ask, out)
 
     def save(session: Session) -> None:
         state.mkdir(parents=True, exist_ok=True)
         last.write_text(json.dumps(session.to_dict(), indent=2, default=str))
+
+    if args.command == "ui":
+        return _serve_ui(args, state, last, save, out, err, llm=llm, port=port)
+
+    engineer = TerminalEngineer(ask, out)
 
     owns_port = False
     try:

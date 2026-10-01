@@ -954,10 +954,37 @@ PYTHONPATH=src python -m debugagent.cli debug --env .env
 
 # 4. print the trace of the last session
 PYTHONPATH=src python -m debugagent.cli inspect
+
+# 5. or drive the SAME investigation from a browser. Same memory, same Coordinator,
+#    same investigate() call - only the Engineer differs, and every panel is
+#    labelled with the authority that produced it. Loopback only, no login: it is
+#    a local engineering tool, not a service.
+PYTHONPATH=src python -m debugagent.cli ui --env .env   # then open http://127.0.0.1:8765
 ```
 
 `--memory hindsight` is the default. `--memory offline:demo/offline-memory.json` runs the same loop
 with no network, for rehearsing the flow before recording.
+
+### The browser UI (`debugagent ui`)
+
+Same investigation, a different `Engineer`. `src/debugagent/application/` holds a view model, a
+`WebEngineer` that implements the existing `Engineer` protocol, a stdlib `http.server` UI and the
+composition root that starts a session. Nothing in `agents/`, `pipeline/`, `memory/` or `llm/` changed,
+and a test asserts that importing the flow does not import the application layer - the UI is a sibling
+of the terminal engineer, not a branch inside the flow.
+
+The seven panels - Memory, Evidence, Workers, Reasoning, Validation, Decision, Trace - are an
+*inspection* order, not a claim about execution order, and each carries a trust label
+(`KNOWLEDGE` / `EVIDENCE` / `OBSERVATION` / `PROPOSAL` / `DECISION`, plus `TRACE` for process records
+that assert nothing about the design). A panel is present only when its stage ran, so a session with no
+worker stage has no Workers panel rather than an empty one - and the view model imports no domain code,
+which is what lets the same UI show a generic debugging case today and a VLSI one after VLSI-1C.
+
+Two limitations are deliberate and documented rather than discovered. **Decisions are synchronous**:
+the investigation blocks in `decide()` / `resolve()` until the browser answers, so a run holds its
+thread while the engineer reads; suspend/resume is out of scope because it would turn `investigate()`
+into a resumable state machine. And the server is **local and unauthenticated** - it binds 127.0.0.1,
+has no login, no CSRF token and no rate limiting, and warns if asked to bind anything wider.
 
 Tests: `PYTHONPATH=src python -m unittest discover -s tests`. The Hindsight tests skip unless
 `HINDSIGHT_URL` is set; with it set, 9 of them run against the real service.
