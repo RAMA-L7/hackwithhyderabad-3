@@ -832,6 +832,8 @@ The intended future workers target VLSI engineering workflows, including:
 **These VLSI-specific capabilities are planned next and are not yet part of the implemented
 multi-agent runtime.** No VLSI worker exists, and no VLSI execution has been started.
 
+The canonical roadmap for this evolution is **[VLSI Engineering Roadmap](docs/architecture/vlsi-engineering-roadmap.md)**. It separates what exists today (CURRENT) from what is proposed (PLANNED), sets out the milestone sequence from VLSI-Foundation through signoff, and records the deterministic-tool boundary the VLSI work must preserve: the agent proposes, a deterministic analysis produces evidence, and an engineer decides. That document is authoritative for VLSI planning; this section is a summary and is not kept in sync with it.
+
 The trust hierarchy is unchanged by any of it:
 
 ```
