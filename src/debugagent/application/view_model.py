@@ -450,6 +450,24 @@ def _workers_panel(session: Any) -> Panel | None:
 
     The panel holds two kinds of content, so the patch proposals carry their own PROPOSAL trust rather
     than being filed under the panel's OBSERVATION.
+
+    ## The field names here are the worker's, not this module's
+
+    A worker finding is whatever `RankedFinding.to_dict()` produced, and those keys are `content`,
+    `kind`, `ref`, `score`, `source`, `task_id`. An earlier revision of this panel read `message` and
+    `provenance.ref` instead - names that exist on the VLSI `VlsiFinding` and on nothing in the worker
+    record - so every real finding rendered as an empty row carrying only its score, with no text and
+    no provenance. Nothing caught it: the tests that covered this panel hand-wrote their fixtures in
+    the wrong shape, so they agreed with the bug, and a browser check run without a repository never
+    produced a `verifier` section to look at.
+
+    Two rules follow, and they are the reason `test_a_real_ranked_finding_reaches_the_workers_panel`
+    exists. Build the fixture from the real `RankedFinding`, never from a dict typed by hand; and when
+    a worker's record gains or loses a field, read the name off `worker_stage` rather than off whatever
+    a worker-adjacent dataclass happens to call it. `content` and `source` are load-bearing here -
+    `source` carries the `code:`/`log:` prefix from `ARTIFACT_SOURCE_PREFIX`, which is precisely the
+    "this observation did not come from the engineer" distinction, so it is displayed verbatim rather
+    than stripped back to the bare ref.
     """
     workers = getattr(session, "workers", None)
     if workers is None:
@@ -467,9 +485,9 @@ def _workers_panel(session: Any) -> Panel | None:
             for finding in findings:
                 items.append(PanelItem(
                     ref=str(finding.get("ref", "") or ""),
-                    label=str(finding.get("message", "") or ""),
+                    label=str(finding.get("content", "") or ""),
                     value=f"score {finding.get('score', '?')}",
-                    source=str((finding.get("provenance") or {}).get("ref", "") or "")))
+                    source=str(finding.get("source", "") or "")))
         else:
             items.append(PanelItem(label="code / log verifier",
                                    detail=f"no observation reported "

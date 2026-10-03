@@ -29,6 +29,8 @@ from debugagent.application.view_model import (
     build_view_model,
 )
 
+from debugagent.pipeline.worker_stage import RankedFinding
+
 APP_DIR = Path(__file__).resolve().parents[1] / "src" / "debugagent" / "application"
 VIEWS = APP_DIR / "view_model.py"
 
@@ -61,6 +63,29 @@ class Obj:
 
     def __init__(self, **fields):
         self.__dict__.update(fields)
+
+
+def ranked_finding(*, ref="logs/a.log", kind="log", content="saw X", source="log:logs/a.log",
+                   score=1, task_id="verify:logs/a.log"):
+    """A worker finding built by the REAL `RankedFinding`, not by a dict typed here.
+
+    This helper exists because of a defect it would have caught. The Workers panel used to read
+    `finding["message"]` and `finding["provenance"]["ref"]`, neither of which is a key of
+    `RankedFinding.to_dict()` - they are names from the VLSI `VlsiFinding` and from nowhere in the
+    worker record. Every real finding therefore rendered as an empty row with a score and no
+    provenance, and every test over that panel passed anyway, because each one spelled its fixture out
+    by hand in the same wrong shape and so agreed with the bug.
+
+    Constructing the dataclass instead means a rename on the worker side now breaks these tests loudly
+    rather than silently producing a second, parallel schema that only the tests believe in. It also
+    means `test_a_real_ranked_finding_reaches_the_workers_panel` cannot rot: it asserts against the
+    same `to_dict()` output production consumes.
+
+    Importing `worker_stage` here is deliberate and does not compromise domain neutrality - it is a
+    generic pipeline module, and the neutrality tests below scan `application/` rather than this file.
+    """
+    return RankedFinding(kind=kind, ref=ref, content=content, score=score,
+                         task_id=task_id, source=source).to_dict()
 
 
 class DomainNeutrality(unittest.TestCase):
@@ -100,9 +125,10 @@ class DomainNeutrality(unittest.TestCase):
                                               trace=["normalized"]))
         vlsi_shaped = build_view_model(FakeSession(
             case=Obj(problem_signature="setup timing violation"),
-            workers={"verifier": {"findings": [{"ref": "constraints/top.sdc", "score": 2,
-                                                "message": "no create_clock for 'core_clk'",
-                                                "provenance": {"ref": "constraints/top.sdc"}}],
+            workers={"verifier": {"findings": [ranked_finding(
+                                        ref="constraints/top.sdc", kind="code",
+                                        content="no create_clock for 'core_clk'",
+                                        source="code:constraints/top.sdc", score=2)],
                                   "summary": {"total": 1, "joined": True},
                                   "refusals": []},
                     "patches": {"proposals": []}},
@@ -163,8 +189,8 @@ class TrustLabels(unittest.TestCase):
     def test_a_patch_proposal_inside_the_workers_panel_is_marked_proposal(self):
         """One panel holds two kinds of content, so the item refines the panel."""
         model = build_view_model(FakeSession(workers={
-            "verifier": {"findings": [{"ref": "a.py", "score": 1, "message": "saw X",
-                                       "provenance": {"ref": "a.py"}}],
+            "verifier": {"findings": [ranked_finding(ref="a.py", kind="code", content="saw X",
+                                                     source="code:a.py")],
                          "summary": {"total": 1, "joined": True}, "refusals": []},
             "patches": {"proposals": [{"observations": [{"ref": "a.py", "content": "diff body"}]}]}}))
         workers = model.panel("Workers")
@@ -176,8 +202,8 @@ class TrustLabels(unittest.TestCase):
     def test_an_item_states_trust_only_when_it_differs_from_its_panel(self):
         """A label that merely repeats its panel is noise, and noise here is corrosive."""
         model = build_view_model(FakeSession(workers={
-            "verifier": {"findings": [{"ref": "a.py", "score": 1, "message": "saw X",
-                                       "provenance": {"ref": "a.py"}}],
+            "verifier": {"findings": [ranked_finding(ref="a.py", kind="code", content="saw X",
+                                                     source="code:a.py")],
                          "summary": {"total": 1, "joined": True}, "refusals": []}}, trace=["t"]))
         for panel in model.panels:
             for item in panel.items:
@@ -297,13 +323,58 @@ class Fidelity(unittest.TestCase):
             with self.subTest(item=item.label):
                 self.assertTrue(item.source, f"{item.label} is an evidence item with no source")
 
-    def test_findings_carry_their_provenance_reference(self):
+    def test_a_real_ranked_finding_reaches_the_workers_panel_intact(self):
+        """RankedFinding -> to_dict() -> _workers_panel() -> PanelItem, with nothing dropped.
+
+        This is the regression test for a shipped defect. `_workers_panel` read `message` and
+        `provenance.ref`; `RankedFinding.to_dict()` emits `content` and `source`. Every finding
+        therefore rendered as an empty row with a score and no provenance, and the tests over this
+        panel all passed because each spelled its fixture out by hand in the same wrong shape.
+
+        The fixture is built from the real dataclass (see `ranked_finding`), so this asserts against
+        the exact structure production consumes rather than a schema only the tests believe in. If the
+        worker's record is renamed, this fails instead of going quietly blank in the browser.
+        """
+        finding = ranked_finding(ref="constraints/top.sdc", kind="code", score=2,
+                                 content="no create_clock for 'core_clk'",
+                                 source="code:constraints/top.sdc", task_id="sdc:constraints/top.sdc")
         model = build_view_model(FakeSession(workers={
-            "verifier": {"findings": [{"ref": "logs/a.log", "score": 1, "message": "m",
-                                       "provenance": {"ref": "logs/a.log"}}],
+            "verifier": {"findings": [finding],
                          "summary": {"total": 1, "joined": True}, "refusals": []}}, trace=["t"]))
-        finding = model.panel("Workers").items[0]
-        self.assertEqual(finding.source, "logs/a.log")
+
+        panel = model.panel("Workers")
+        self.assertIsNotNone(panel, "a session with a worker record must have a Workers panel")
+        item = panel.items[0]
+
+        # The three fields that carry the finding, asserted against the same keys production reads.
+        self.assertEqual(item.label, finding["content"], "the finding text did not reach the panel")
+        self.assertEqual(item.source, finding["source"], "the provenance did not reach the panel")
+        self.assertEqual(item.ref, finding["ref"], "the item identity did not reach the panel")
+
+        # And explicitly not the names the bug used, so a reintroduction is a named failure.
+        self.assertNotEqual(item.label, finding.get("message", ""), "message is not a finding key")
+        self.assertNotIn("provenance", finding, "RankedFinding carries no nested provenance")
+        self.assertTrue(item.label.strip(), "a finding must not render as an empty row")
+        self.assertTrue(item.source.strip(), "a finding must not render without provenance")
+
+    def test_the_source_keeps_its_artifact_prefix_rather_than_being_stripped_back_to_the_ref(self):
+        """`code:` / `log:` says the observation did not come from the engineer, so it stays visible.
+
+        `ARTIFACT_SOURCE_PREFIX` exists so a tool-derived observation can never claim to be
+        engineer-stated. Displaying the bare `ref` would keep the location and drop that distinction,
+        which is the one piece of provenance the engineer cannot reconstruct for themselves.
+        """
+        for kind, prefix in (("code", "code:"), ("log", "log:")):
+            with self.subTest(kind=kind):
+                finding = ranked_finding(ref="app/server.py", kind=kind,
+                                         source=f"{prefix}app/server.py")
+                model = build_view_model(FakeSession(workers={
+                    "verifier": {"findings": [finding],
+                                 "summary": {"total": 1, "joined": True}, "refusals": []}},
+                    trace=["t"]))
+                item = model.panel("Workers").items[0]
+                self.assertEqual(item.source, f"{prefix}app/server.py")
+                self.assertNotEqual(item.source, item.ref, "the prefix was stripped")
 
     def test_worker_refusals_are_visible(self):
         model = build_view_model(FakeSession(workers={
