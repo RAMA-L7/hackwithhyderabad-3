@@ -1026,7 +1026,17 @@ async function poll() {
 
 document.getElementById("start-btn").addEventListener("click", async function () {
   const description = document.getElementById("description").value.trim();
-  if (!description) return;
+  if (!description) {
+    /* Defence in depth: `syncStartButton` keeps this button disabled until a description exists, so a
+       click should not reach here. Covers the keyboard, a programmatic click, and a click racing the
+       first `input` event. */
+    state.notice = "Describe the issue first. The first line is the summary.";
+    render(state.snapshot, false);
+    const field = document.getElementById("description");
+    field.focus();
+    return;
+  }
+  state.notice = null;
   try {
     const response = await fetch("/api/sessions", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1049,6 +1059,26 @@ document.getElementById("start-btn").addEventListener("click", async function ()
   }
 });
 
+/* Keeps Start disabled until the description holds non-whitespace content, and keeps `aria-disabled`
+   in step with it so the announced state cannot drift from the visual one. */
+function syncStartButton() {
+  const field = document.getElementById("description");
+  const button = document.getElementById("start-btn");
+  const ready = field.value.trim().length > 0;
+  button.disabled = !ready;
+  button.setAttribute("aria-disabled", ready ? "false" : "true");
+}
+
+document.getElementById("description").addEventListener("input", function () {
+  /* Clear the correction as soon as they start typing. */
+  if (state.notice && state.notice.indexOf("Describe the issue first") === 0) {
+    state.notice = null;
+    render(state.snapshot, false);
+  }
+  syncStartButton();
+});
+
+syncStartButton();
 render(null, true);
 </script>
 </body>

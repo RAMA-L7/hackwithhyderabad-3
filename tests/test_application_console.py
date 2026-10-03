@@ -970,5 +970,141 @@ class ConsoleInteraction(unittest.TestCase):
         buttons = {b["key"]: b for b in _copy_buttons(self.ctx) if b["key"].startswith("hyp:")}
         self.assertEqual(buttons["hyp:H2"]["word"], "Copied")
 
+@unittest.skipIf(quickjs is None, "quickjs is not importable here")
+class StartAction(unittest.TestCase):
+    """The Start investigation button must actually start an investigation, or visibly refuse to.
+
+    This exists because of a real report: the button looked available, was clicked, and produced no
+    request, no banner and no console output - indistinguishable from a control that was never wired
+    up. The handler was attached the whole time; what it did on an empty description was `return`.
+
+    So the assertions here are about BEHAVIOUR, never about the button's presence. "The element with
+    id `start-btn` exists" would have passed against the broken version, which is the whole problem.
+    """
+
+    def setUp(self):
+        self.ctx = _build()
+
+    def _button(self):
+        return _data(self.ctx, """
+          (function () {
+            var b = document.getElementById("start-btn");
+            return { disabled: !!b.disabled, aria: b.getAttribute("aria-disabled") };
+          })()
+        """)
+
+    def _type(self, text: str) -> None:
+        _run(self.ctx, 'document.getElementById("description").value = %s;' % json.dumps(text))
+        _run(self.ctx, """
+          (function () {
+            /* The shim has no Event constructor, so the registered `input` listeners are invoked the
+               same way its `click()` invokes `click` listeners. This is the real listener, not a
+               stand-in, so the test exercises the same function the browser would. */
+            var field = document.getElementById("description");
+            var list = field._listeners["input"] || [];
+            for (var i = 0; i < list.length; i++) list[i].call(field, { target: field });
+          })()
+        """)
+        _drain(self.ctx)
+
+    def _click(self) -> None:
+        _run(self.ctx, 'document.getElementById("start-btn").click();')
+        _drain(self.ctx)
+
+    def _posts(self) -> list:
+        return _data(self.ctx, "__log.posts")
+
+    def _banner(self) -> dict:
+        return _data(self.ctx, """
+          (function () {
+            var n = document.getElementById("banner");
+            return { hidden: !!n.hidden, text: String(n.textContent || "") };
+          })()
+        """)
+
+    # --- the button's precondition is stated, not hidden ------------------------------------------------
+
+    def test_the_button_is_disabled_while_there_is_nothing_to_investigate(self):
+        """A control that cannot be used must not look usable."""
+        button = self._button()
+        self.assertTrue(button["disabled"], "Start must be disabled with an empty description")
+        self.assertEqual(button["aria"], "true", "and must say so to assistive technology")
+
+    def test_whitespace_only_still_counts_as_nothing(self):
+        """`value.trim()`, because a description of spaces is still no description.
+
+        Without the trim the button would enable on whitespace and the handler would then refuse - the
+        same silent disagreement between what the control offers and what it accepts.
+        """
+        self._type("   \n  ")
+        self.assertTrue(self._button()["disabled"], "whitespace must not enable Start")
+
+    def test_typing_enables_the_button(self):
+        self._type("checkout service fails: pool exhausted")
+        button = self._button()
+        self.assertFalse(button["disabled"], "Start must enable once there is a description")
+        self.assertEqual(button["aria"], "false")
+
+    def test_clearing_the_field_disables_it_again(self):
+        self._type("something")
+        self.assertFalse(self._button()["disabled"])
+        self._type("")
+        self.assertTrue(self._button()["disabled"], "emptying the field must disable Start again")
+
+    # --- clicking actually starts something -------------------------------------------------------------
+
+    def test_clicking_with_a_description_posts_the_session_request(self):
+        """The behaviour the whole control exists for. Asserted on the request, not on the element."""
+        description = "constraint problem\nan input delay names an undefined clock"
+        self._type(description)
+        self._click()
+        posts = self._posts()
+        self.assertEqual(len(posts), 1, f"exactly one start request, got {posts}")
+        self.assertEqual(posts[0]["url"], "/api/sessions")
+        self.assertEqual(json.loads(posts[0]["body"]),
+                         {"description": description},
+                         "the description must be sent verbatim")
+
+    def test_clicking_with_an_empty_description_sends_nothing_and_says_so(self):
+        """The reported failure, pinned.
+
+        The shim's `click()` dispatches listeners regardless of `disabled`, which is exactly the
+        keyboard/race/programmatic case the handler's own guard exists for. Against the broken version
+        this test still passed on `posts == []` but failed on the missing banner, because a bare
+        `return` told the engineer nothing.
+        """
+        self._type("")
+        self._click()
+        self.assertEqual(self._posts(), [], "an empty description must not start a session")
+        banner = self._banner()
+        self.assertFalse(banner["hidden"], "the engineer must be told why nothing happened")
+        self.assertIn("Describe the issue", banner["text"])
+
+    def test_typing_clears_the_correction(self):
+        """The correction must not outlive the mistake it corrects."""
+        self._type("")
+        self._click()
+        self.assertFalse(self._banner()["hidden"])
+        self._type("checkout service fails")
+        self.assertTrue(self._banner()["hidden"], "the notice must clear once they start typing")
+
+    def test_a_start_request_is_not_sent_twice_from_one_click(self):
+        self._type("one investigation")
+        self._click()
+        self.assertEqual(len(self._posts()), 1)
+
+    def test_the_start_section_is_hidden_once_a_session_begins(self):
+        """Proves the click took the real path, not merely that a request went out.
+
+        The handler hides the start form itself as part of handing over to the run, so no extra render
+        is needed - which is also a stronger assertion, because it can only pass if the handler ran to
+        that line rather than stalling at the `await`.
+        """
+        self._type("an issue worth investigating")
+        self._click()
+        hidden = _run(self.ctx, 'document.getElementById("start").hidden === true')
+        self.assertTrue(hidden, "the start form must be replaced once the run begins")
+
+
 if __name__ == "__main__":
     unittest.main()
