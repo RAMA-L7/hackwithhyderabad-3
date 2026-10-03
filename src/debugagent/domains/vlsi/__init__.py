@@ -41,6 +41,13 @@ from debugagent.domains.vlsi.artifacts import (
     VlsiArtifact,
     artifact_identity,
 )
+from debugagent.domains.vlsi.comparison import (
+    COMPARISON_OUTCOMES,
+    COMPARISON_STATUSES,
+    FindingComparison,
+    RepairVerification,
+    compare_sdc_findings,
+)
 from debugagent.domains.vlsi.findings import (
     DETAIL_VALUE_TYPES,
     FINDING_KINDS,
@@ -49,6 +56,11 @@ from debugagent.domains.vlsi.findings import (
     VlsiFinding,
     finding_sort_key,
     sort_findings,
+)
+from debugagent.domains.vlsi.identity import (
+    IDENTITY_FIELDS_BY_KIND,
+    canonical_identity,
+    parse_identity,
 )
 from debugagent.domains.vlsi.identity import (
     IDENTITY_FIELDS_BY_KIND,
@@ -98,6 +110,16 @@ __all__ = [
     "IDENTITY_FIELDS_BY_KIND",
     "canonical_identity",
     "parse_identity",
+    # identity
+    "IDENTITY_FIELDS_BY_KIND",
+    "canonical_identity",
+    "parse_identity",
+    # comparison
+    "COMPARISON_OUTCOMES",
+    "COMPARISON_STATUSES",
+    "FindingComparison",
+    "RepairVerification",
+    "compare_sdc_findings",
     # sdc
     "CreateClock",
     "InputDelay",
