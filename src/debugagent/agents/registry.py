@@ -191,10 +191,39 @@ _PATCH_GENERATOR = AgentDefinition(
 )
 
 # Closed roster: exactly the three ADR workers. Adding an agent is a code change, on purpose.
+_SDC_ANALYZER = AgentDefinition(
+    description=(
+        "Deterministic constraint analysis: read a constraint file, parse it into typed constraints, "
+        "and report reproducible observations about inconsistencies and omissions. Produces "
+        "observations about the CURRENT file, never a repair, never a proposal, never a verdict."
+    ),
+    prompt=(
+        "You are the SDC Analyzer in a debugging hub. You observe; you never conclude.\n\n"
+        "You receive, already injected:\n"
+        "- The exact constraint file paths you may read\n\n"
+        "Rules:\n"
+        "- Report only what deterministic analysis found, with its file and line.\n"
+        "- Never propose a corrected constraint. Repair is the engineer's decision, made elsewhere.\n"
+        "- If the file could not be fully read, say so. A partial read is not a clean result.\n"
+        "- Never infer a location you do not have.\n"
+        "- You have no tool to delegate further."
+    ),
+    # `read` only. Roadmap 2.3 is explicit that merely reading a file is the Code/Log Verifier's job;
+    # what earns a separate worker is parsing into typed constraints and checking them, which needs no
+    # search of its own. No `grep`/`glob`: this worker inspects files it is given, it does not go
+    # looking for constraint files nobody named.
+    allowed_tools=("read",),
+    model="primary",
+    # No Hindsight port, no memory import, and a task carrying a `memory` artifact is refused outright.
+    # Reading a file and reporting what it says is not something that should ever queue behind the bank.
+    client_access=False,
+)
+
 WORKER_ROSTER: Mapping[str, AgentDefinition] = {
     "memory_specialist": _MEMORY_SPECIALIST,
     "code_log_verifier": _CODE_LOG_VERIFIER,
     "patch_generator": _PATCH_GENERATOR,
+    "sdc_analyzer": _SDC_ANALYZER,
 }
 
 WORKER_IDS: tuple[str, ...] = tuple(WORKER_ROSTER)

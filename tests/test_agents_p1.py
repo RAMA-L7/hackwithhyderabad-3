@@ -40,6 +40,7 @@ ADR_TOOL_SETS = {
     "memory_specialist": ("hindsight_recall", "hindsight_get_facts"),
     "code_log_verifier": ("read", "grep", "glob"),
     "patch_generator": ("read", "diff"),
+    "sdc_analyzer": ("read",),
     "coordinator": ("task", "read", "grep", "glob"),
 }
 
@@ -176,9 +177,18 @@ class AntiRecursionTests(unittest.TestCase):
 
 
 class RegistryTests(unittest.TestCase):
-    def test_registry_contains_exactly_the_three_approved_workers(self):
-        self.assertEqual(set(WORKER_ROSTER), {"memory_specialist", "code_log_verifier", "patch_generator"})
-        self.assertEqual(len(agent_names()), 3)
+    def test_registry_contains_exactly_the_four_approved_workers(self):
+        """Was three until VLSI-1C added `sdc_analyzer`. The assertion is kept deliberately.
+
+        The point is not that the number is four. It is that the roster is CLOSED and the closed set is
+        written down here, so a fifth worker has to change this test on purpose rather than appear by
+        addition. `sdc_analyzer` earned its entry under roadmap section 2.3: the analysis is
+        deterministic, it is not expressible as file inspection, it yields typed structure rather than
+        text excerpts, and an engineer would act differently on it.
+        """
+        self.assertEqual(set(WORKER_ROSTER),
+                         {"memory_specialist", "code_log_verifier", "patch_generator", "sdc_analyzer"})
+        self.assertEqual(len(agent_names()), 4)
         self.assertEqual(agent_names(), WORKER_IDS)
 
     def test_registry_is_closed(self):

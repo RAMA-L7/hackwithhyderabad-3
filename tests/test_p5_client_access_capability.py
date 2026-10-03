@@ -52,6 +52,9 @@ GATE_TIMEOUT = 1.0
 MEMORY = "memory_specialist"
 VERIFIER = "code_log_verifier"
 PATCHER = "patch_generator"
+# Added by VLSI-1C. Non-client for the same reason the other two are: reading a file and reporting what
+# it says must never queue behind the bank, and a deterministic analysis has no reason to reach it.
+SDC_ANALYZER = "sdc_analyzer"
 
 
 def memory_spec(task_id: str) -> TaskSpec:
@@ -175,7 +178,7 @@ class RosterCapabilityTests(CapabilityBase):
         self.assertEqual(len(AGENT_DEFINITION_FIELDS), 5)
 
     def test_only_the_memory_specialist_is_client_access(self):
-        expected = {MEMORY: True, VERIFIER: False, PATCHER: False}
+        expected = {MEMORY: True, VERIFIER: False, PATCHER: False, SDC_ANALYZER: False}
         self.assertEqual({name: get_agent(name).client_access for name in WORKER_IDS}, expected)
 
     def test_an_agent_granted_a_memory_tool_must_be_client_access(self):

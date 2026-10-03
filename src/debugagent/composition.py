@@ -174,7 +174,9 @@ def build_repository_runtime(root: Any, *, coordinator: Coordinator | None = Non
     """
     from debugagent.agents.code_log_verifier import CODE_LOG_VERIFIER, CodeLogVerifier
     from debugagent.agents.patch_generator import PATCH_GENERATOR, PatchGenerator
+    from debugagent.agents.sdc_analyzer_worker import SDC_ANALYZER, SdcAnalyzerWorker
     from debugagent.agents.source_files import FileSourcePort, RepoPatchSourcePort, RepositoryScope
+    from debugagent.domains.vlsi.sdc_worker import analyze_sdc_text
 
     scope = RepositoryScope(root)
     source_port = FileSourcePort(scope)
@@ -182,6 +184,12 @@ def build_repository_runtime(root: Any, *, coordinator: Coordinator | None = Non
     hub = coordinator if coordinator is not None else Coordinator(lane=lane)
     hub.register(CODE_LOG_VERIFIER, CodeLogVerifier(source_port))
     hub.register(PATCH_GENERATOR, PatchGenerator(patch_port))
+    # The one place in the wiring that names a domain. The worker takes `analyze` as a callable and
+    # imports no domain module, so `agents/` stays domain-blind and VLSI-2's STA analysis arrives as a
+    # second callable here rather than a fifth roster entry. This is the same composition root that
+    # already builds the ports and the two P6 workers, for the same reason: a caller cannot construct a
+    # worker pointing anywhere it likes without going through this function.
+    hub.register(SDC_ANALYZER, SdcAnalyzerWorker(source_port, analyze=analyze_sdc_text))
     return RepositoryRuntime(scope=scope, coordinator=hub, source_port=source_port,
                              patch_port=patch_port)
 

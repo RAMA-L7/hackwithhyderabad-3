@@ -41,6 +41,52 @@ def _add_memory_argument(parser) -> None:
                         help="memory source: hindsight (default) or offline:<file>")
 
 
+def _add_worker_arguments(parser) -> None:
+    """Repository and target flags, in the vocabulary the roster already uses.
+
+    Nothing here names a domain. `--verifier-target` is "a file the Code/Log Verifier should inspect"
+    and `--sdc-target` is "a constraint file the SDC Analyzer should inspect"; both are lists of paths
+    that `RepositoryScope` will validate, and which worker reads them is the pipeline's decision, made
+    in `plan_tasks`. The UI does not know what an SDC target means, and neither does this parser.
+
+    `action="append"` rather than a comma-split string, because a path may contain a comma and because
+    repeating a flag is the form every other multi-value tool in this repo already uses.
+    """
+    parser.add_argument("--repository", metavar="DIR",
+                        help="repository root for worker inspection; mounts the worker stage")
+    parser.add_argument("--verifier-target", metavar="PATH", action="append", default=[],
+                        help="file for a worker to inspect (repeatable; needs --repository)")
+    parser.add_argument("--sdc-target", metavar="PATH", action="append", default=[],
+                        help="constraint file for the SDC Analyzer (repeatable; needs --repository)")
+
+
+def _worker_options(args, coordinator, err):
+    """Build the repository runtime and the per-session worker options, or `(None, {})`.
+
+    Returns the runtime so the caller can decide whether it owns it. Mounting is the whole point of the
+    flag: without a repository there is no `SourcePort`, no `RepositoryScope` and therefore no way to
+    keep a read inside the tree an engineer named - so a target without a repository is refused rather
+    than quietly dropped, because a silently dropped target looks identical to a worker that ran and
+    found nothing.
+    """
+    from debugagent.composition import build_repository_runtime
+
+    targets = tuple(args.verifier_target or ()) + tuple(args.sdc_target or ())
+    if not args.repository:
+        if targets:
+            print("error: --verifier-target/--sdc-target need --repository DIR", file=err)
+            raise ValueError("worker targets supplied without --repository")
+        return None, {}
+
+    # Shares the session Coordinator on purpose. Two Coordinators would mean two `MemoryLane`s over one
+    # client, which is the P5 hazard reintroduced by composition; `investigate()` refuses it loudly too,
+    # but refusing before the port is built is cheaper and clearer.
+    runtime = build_repository_runtime(args.repository, coordinator=coordinator)
+    return runtime, {"repository": runtime,
+                     "verifier_targets": tuple(args.verifier_target or ()),
+                     "sdc_targets": tuple(args.sdc_target or ())}
+
+
 def _serve_ui(args, state: Path, last: Path, save, out, err, *, llm, port) -> int:
     """Run the browser UI. Same composition root as `debug`, different Engineer.
 
@@ -50,6 +96,7 @@ def _serve_ui(args, state: Path, last: Path, save, out, err, *, llm, port) -> in
     """
     registry = SessionRegistry()
     owns_port = False
+    repository = None
     try:
         if llm is None:
             load_env_file(args.env)
@@ -58,9 +105,13 @@ def _serve_ui(args, state: Path, last: Path, save, out, err, *, llm, port) -> in
             port = make_port(args.memory, state)
             owns_port = True
         runtime = build_runtime(port, memory_specialist=MemorySpecialist(port))
+        # The repository runtime shares the session Coordinator. Both are closed in `finally`, and
+        # `owns_repository` records that the CLI built this one rather than being handed it.
+        repository, worker_options = _worker_options(args, runtime.coordinator, err)
         factory = make_session_factory(registry=registry, port=port, llm=llm,
                                        coordinator=runtime.coordinator,
                                        timeout=args.decision_timeout,
+                                       worker_options=worker_options,
                                        on_complete=lambda session: save(session) if session else None)
         if args.host not in ("127.0.0.1", "localhost", "::1"):
             print(f"warning: {args.host} is not loopback. The UI has no login, no CSRF token"
@@ -232,10 +283,12 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
     commands = parser.add_subparsers(dest="command", required=True)
     debug = commands.add_parser("debug", help="investigate one issue interactively")
     debug.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
+    _add_worker_arguments(debug)
     debug.add_argument("--input", metavar="FILE",
                        help="read the issue from a .json/.yaml file instead of the first two prompts")
     _add_memory_argument(debug)
     ui = commands.add_parser("ui", help="investigate issues in a local browser UI")
+    _add_worker_arguments(ui)
     ui.add_argument("--env", default=".env.live", help="env file with LLM settings (default .env.live)")
     ui.add_argument("--host", default=DEFAULT_UI_HOST,
                     help=f"interface to bind (default {DEFAULT_UI_HOST})")
@@ -272,6 +325,7 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
     engineer = TerminalEngineer(ask, out)
 
     owns_port = False
+    repository = None
     try:
         if llm is None:
             load_env_file(args.env)
@@ -290,7 +344,12 @@ def main(argv=None, *, ask=input, out=sys.stdout, err=sys.stderr, port=None, llm
             engineer.say(f"Issue loaded from {args.input}: {raw.description.splitlines()[0]}")
         else:
             raw = engineer.read_input()
-        session = investigate(raw, port, llm, engineer, on_step=save, coordinator=runtime.coordinator)
+        # Mounted here for the same reason the UI mounts it: `investigate()` needs a live
+        # `RepositoryRuntime` to give a worker a `SourcePort`, and there is no other way to get one.
+        # `_worker_options` returns `{}` when no repository was asked for, so a plain run is unchanged.
+        repository, worker_options = _worker_options(args, runtime.coordinator, err)
+        session = investigate(raw, port, llm, engineer, on_step=save, coordinator=runtime.coordinator,
+                              **worker_options)
     except KeyboardInterrupt:
         print("\naborted; nothing retained", file=err)
         return 130

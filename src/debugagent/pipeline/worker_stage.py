@@ -367,7 +367,7 @@ class WorkerStage:
 def _verifier_section(fan: FanOutResult, findings: Sequence[RankedFinding]) -> dict:
     reported = list(findings[:MAX_REPORTED_FINDINGS])
     return {
-        "agent": _agent_of(fan),
+        "agents": _agents_of(fan),
         "boundary": ("current-system observations. NOT an Evidence item, NOT a verification, and not a "
                      "verdict: the engineer confirms them, exactly as they confirm any observation"),
         "findings": [finding.to_dict() for finding in reported],
@@ -381,7 +381,7 @@ def _verifier_section(fan: FanOutResult, findings: Sequence[RankedFinding]) -> d
 
 def _patches_section(fan: FanOutResult) -> dict:
     return {
-        "agent": _agent_of(fan),
+        "agents": _agents_of(fan),
         "boundary": ("PROPOSALS. Nothing here is applied, written, committed or verified, and no patch is "
                      "ever applied automatically. Applying one is an engineer decision"),
         "proposals": [result.to_dict() for result in fan.results if result.ok],
@@ -391,13 +391,22 @@ def _patches_section(fan: FanOutResult) -> dict:
     }
 
 
-def _agent_of(fan: FanOutResult) -> str:
-    for outcome in fan.outcomes:
-        return outcome.agent
-    return ""
+def _agents_of(fan: FanOutResult) -> list[str]:
+    """Every agent that reported, deduplicated and sorted.
+
+    Was `agent`, taken from the FIRST outcome. That was wrong the moment one fan-out could hold more
+    than one kind of worker: a section carrying both file excerpts and deterministic constraint analysis
+    would have been labelled with whichever agent happened to be scheduled first, so a mixed section
+    attributed every finding to a worker that did not produce all of them. Misattributing provenance is
+    the specific failure this record exists to prevent, and it is not worth carrying for a singular key.
+
+    Sorted rather than first-seen so the value is reproducible: two runs over the same tasks produce the
+    same list regardless of which thread happened to finish first.
+    """
+    return sorted({outcome.agent for outcome in fan.outcomes if outcome.agent})
 
 
-def plan_tasks(case: Any, *, verifier_targets: Sequence[str] = (),
+def plan_tasks(case: Any, *, verifier_targets: Sequence[str] = (), sdc_targets: Sequence[str] = (),
                patch_requests: Sequence[tuple[str, str]] = ()) -> tuple[list[TaskSpec], list[TaskSpec]]:
     """Turn caller INTENT into worker tasks, one task per target for failure isolation.
 
@@ -411,9 +420,26 @@ def plan_tasks(case: Any, *, verifier_targets: Sequence[str] = (),
 
     Nothing is invented here. A patch request must arrive with both a target and a proposed body,
     because a worker choosing its own target is a worker deciding what to change.
+
+    ## Why SDC targets join the verifier channel rather than getting one of their own
+
+    SDC tasks are built here and appended to `verifier_tasks`, so the same `fan_out` dispatches them,
+    the same `rank_findings` ranks them, and the same `verifier` section records them.
+
+    That is a trust judgement, not a convenience. Both workers report observations about the CURRENT
+    system: one quotes what it read in a file, the other reports what deterministic analysis found in a
+    constraint file. They are the same kind of claim at the same authority, and the `verifier` boundary
+    statement already says exactly that - not evidence, not a verification, not a verdict, confirmed by
+    the engineer.
+
+    A separate channel would have been worse twice over. It would grow the generic worker layer into a
+    collection of domain-named channels, and it would push a per-domain branch into the view model to
+    render it - at which point the UI knows what an SDC finding is, which is the one thing the UI must
+    not know. The section stays two keys wide whatever the domain.
     """
     from debugagent.agents.code_log_verifier import build_verifier_task
     from debugagent.agents.patch_generator import build_patch_task
+    from debugagent.agents.sdc_analyzer_worker import build_sdc_task
 
     signature = getattr(case, "problem_signature", "")
     symptoms = tuple(getattr(case, "symptoms", ()) or ())
@@ -422,6 +448,13 @@ def plan_tasks(case: Any, *, verifier_targets: Sequence[str] = (),
         build_verifier_task(task_id=f"verify:{target}", case_signature=signature,
                             targets=(target,), symptoms=symptoms)
         for target in verifier_targets]
+
+    # Same isolation property, same section, different worker. Listed after file inspection so that
+    # adding an SDC target does not disturb the order of the file targets.
+    verifier_tasks += [
+        build_sdc_task(task_id=f"sdc:{target}", case_signature=signature, target=target,
+                       symptoms=symptoms)
+        for target in sdc_targets]
 
     patch_tasks = [
         build_patch_task(task_id=f"patch:{target}", case_signature=signature,
@@ -432,9 +465,10 @@ def plan_tasks(case: Any, *, verifier_targets: Sequence[str] = (),
 
 
 def run_worker_stage(repository: Any, case: Any, *, verifier_targets: Sequence[str] = (),
+                     sdc_targets: Sequence[str] = (),
                      patch_requests: Sequence[tuple[str, str]] = (),
                      timeout: float | None = None) -> WorkerStage:
-    """Run the verifier and patcher through the Coordinator and structure what comes back.
+    """Run the observation and proposal workers through the Coordinator; structure what comes back.
 
     A stage with no targets in one of the two channels records `None` for that channel rather than an
     empty section, so a session that never asked for patches does not grow a "no patches" section that
@@ -444,6 +478,7 @@ def run_worker_stage(repository: Any, case: Any, *, verifier_targets: Sequence[s
     `authorize()` seam - and, in a memory session, the same `MemoryLane` - as every other delegation.
     """
     verifier_tasks, patch_tasks = plan_tasks(case, verifier_targets=verifier_targets,
+                                            sdc_targets=sdc_targets,
                                             patch_requests=patch_requests)
 
     verifier_section = None

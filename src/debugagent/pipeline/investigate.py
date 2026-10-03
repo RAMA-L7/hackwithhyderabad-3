@@ -133,7 +133,7 @@ def assemble_memory_case(session: Session) -> dict:
 
 def investigate(raw: DebugInput, port: MemoryPort, llm, engineer: Engineer, *, session_id: str | None = None,
                 on_step=None, memory_specialist=None, coordinator=None, repository=None,
-                verifier_targets=(), patch_requests=(), worker_timeout=None) -> Session:
+                verifier_targets=(), sdc_targets=(), patch_requests=(), worker_timeout=None) -> Session:
     """Run one session and return it. `on_step(session)` is called after each stage so a caller can persist progress.
 
     P4: `memory_specialist` is optional. When supplied, one memory task is delegated to it through
@@ -168,6 +168,13 @@ def investigate(raw: DebugInput, port: MemoryPort, llm, engineer: Engineer, *, s
         applied, written, committed or run, no proposal is applied automatically, and no proposal is ever
         verified. `patch_requests` must supply both a target and a proposed body, because a worker picking
         its own target would be a worker deciding what to change.
+      - `sdc_targets` names constraint files for the SDC Analyzer. They are dispatched in the SAME fan-out
+        as `verifier_targets` and land in the SAME `session.workers["verifier"]` section, because both are
+        observations about the CURRENT system at the same authority, confirmed by the engineer the same
+        way. There is deliberately no `workers["sdc"]`: a channel per domain would turn the generic worker
+        layer into a catalogue of domains, and rendering one would need a per-domain branch in the view
+        model - at which point the UI would know what an SDC finding is, which is the one thing it must
+        not know.
 
     The stage runs after the evidence set is built and before hypotheses are generated. That ordering is
     for the ENGINEER: by the time they are asked for a decision, the verifier's observations and any
@@ -253,7 +260,7 @@ def investigate(raw: DebugInput, port: MemoryPort, llm, engineer: Engineer, *, s
     # prompt: `build_prompt` takes only the case and the memory context, so no worker output reaches it.
     # Neither section is added to `s.evidence` and neither changes a verification status: findings are
     # observations, patches are proposals, and the engineer still confirms and decides.
-    if repository is not None and (verifier_targets or patch_requests):
+    if repository is not None and (verifier_targets or sdc_targets or patch_requests):
         # One Coordinator per client. If the repository runtime carries a different Coordinator than the
         # memory side, the two would each hold their own lane and the same client could be reached from
         # two threads at once - the exact P5 hazard, reintroduced by composition. Refused loudly rather
@@ -263,6 +270,7 @@ def investigate(raw: DebugInput, port: MemoryPort, llm, engineer: Engineer, *, s
                 "repository runtime must share the session Coordinator "
                 "(build it with coordinator=runtime.coordinator); two Coordinators means two MemoryLanes")
         stage = run_worker_stage(repository, s.case, verifier_targets=verifier_targets,
+                                 sdc_targets=sdc_targets,
                                  patch_requests=patch_requests, timeout=worker_timeout)
         s.workers = stage.to_dict()
         if stage.verifier is not None:

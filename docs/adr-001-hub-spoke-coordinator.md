@@ -510,3 +510,93 @@ Unmodified by this ADR and by all P1+ work touching the demo story:
    before it can be shown alongside hypotheses?
 3. What is the acceptable cost ceiling for a single investigation once the Coordinator plus three
    workers are in the path?
+
+---
+
+## Amendment: the fourth worker (`sdc_analyzer`), VLSI-1C
+
+Appended rather than merged. Everything above this line was written when the roster was three workers,
+and the reasons it was three are still the reasons. This records the one addition, why it was made, and
+what deliberately did not change.
+
+### What was added
+
+One roster entry, `sdc_analyzer`, with `allowed_tools=("read",)`, `model="primary"` and
+`client_access=False`. `WORKER_ROSTER` now holds four.
+
+### Why it qualified
+
+The VLSI roadmap's justification test requires all four of: deterministic and reproducible; not
+expressible as file inspection; needs domain structure rather than text excerpts; and an engineer would
+act differently on the result. Three of the four were settled before any code was written. The second is
+the one that needed arguing, so it is argued here:
+
+*Reading a `.sdc` file and quoting lines is not a new worker's job* - `CodeLogVerifier` already does it,
+under a `RepositoryScope`, with provenance. *Parsing that file into typed constraints and checking those
+constraints against each other* is a different thing: the output is a judgement about internal
+consistency that no amount of grepping produces, and it is the same judgement on every run.
+
+### The part that is genuinely new: the analysis is injected, not imported
+
+Every earlier worker hard-wires its capability. `SdcAnalyzerWorker` takes it as a callable:
+
+    agents/sdc_analyzer_worker.py   generic: task shape, authorisation, refusals, the
+                                    success/partial/failed decision, the Artifact mapping.
+                                    Imports no domain module.
+              |
+              | injected in composition.py - the only place a domain is named
+              v
+    domains/vlsi/sdc_worker.py      VLSI: text in, typed findings out.
+
+This keeps `agents/` domain-blind, which is the property the whole hub-and-spoke arrangement rests on
+and which nothing else in the suite would notice breaking. VLSI-2's STA analysis then arrives as a
+second callable rather than a fifth roster entry - the "small number of workers with wide capability"
+the roadmap asks for, achieved rather than asserted.
+
+### What deliberately did not change
+
+1. **No third worker channel.** SDC findings land in `session.workers["verifier"]`, alongside file
+   excerpts, because both are observations about the CURRENT system at the same authority and the
+   engineer confirms them the same way. `session.workers` remains exactly `{verifier, patches}`.
+
+   A third channel would have been worse twice: the generic layer becomes a catalogue of domains, and
+   rendering it needs a per-domain branch in the view model - at which point the UI knows what an SDC
+   finding is, which is the one thing the domain-neutral UI must not know.
+
+2. **No new field on `AgentDefinition`.** `AGENT_DEFINITION_FIELDS` is still the ADR's four plus
+   `client_access`, and is still closed.
+
+3. **No change to authorisation, depth, or the `task` tool.** `sdc_analyzer` cannot delegate, cannot
+   reach memory, and is refused a `memory` artifact in its context outright.
+
+4. **One generic change to `_agent_of`.** A section used to report the FIRST reporting agent. With two
+   worker kinds in one fan-out that misattributed provenance, so it now reports every reporting agent,
+   sorted. Nothing consumed the old singular key.
+
+### Deliberate decision: zero recognised constraints is NOT a refusal
+
+A constraint file that parsed to nothing might be a valid file using constructs the parser does not yet
+support, or it might not be a constraint file at all. Those are indistinguishable from the parse result
+alone, and guessing would silently drop real findings while presenting as a missing feature rather than
+as a defect.
+
+So neither is refused. The run reports what it found, `partial` when the parser complained and `success`
+when the file was genuinely empty, and the analyser leads with an explicit `analysis_unavailable`
+observation stating that nothing was recognised. The uncertainty is preserved instead of resolved into a
+file-intent claim the evidence does not support.
+
+### Status mapping
+
+| Condition | Result |
+|---|---|
+| complete, with findings | `success` |
+| complete, no findings | `success`, no observations - a clean run is not a failure |
+| parser reported an issue | `partial` - negative conclusions are provisional |
+| target absent | `failed` / `unavailable` |
+| the analyser was miswired or raised | `failed` - a finding about the tool run, not the design |
+
+### Still true
+
+Everything in "What no worker may do" above applies unchanged. An SDC finding is an observation, not an
+`Evidence` item, not a verification, and not a verdict. `build_evidence`, `verify()` and engineer
+interaction are untouched.

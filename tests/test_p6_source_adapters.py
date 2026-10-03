@@ -477,13 +477,20 @@ class RealIntegrationTests(AdapterBase):
         return HindsightMemoryPort(store)
 
     def test_the_composition_root_wires_both_workers(self):
+        """Was two workers; VLSI-1C registers a third alongside them.
+
+        The assertion is kept rather than loosened to "at least the two": the composition root is the
+        only place allowed to attach a worker to a Coordinator, so a worker that appeared without being
+        wired here would be one nothing could dispatch.
+        """
         from debugagent.agents.registry import get_agent
+        from debugagent.agents.sdc_analyzer_worker import SDC_ANALYZER
 
         self.assertEqual(self.coordinator.agent_ids,
-                         tuple(sorted((CODE_LOG_VERIFIER, PATCH_GENERATOR))))
+                         tuple(sorted((CODE_LOG_VERIFIER, PATCH_GENERATOR, SDC_ANALYZER))))
         self.assertIsInstance(self.runtime.scope, RepositoryScope)
         self.assertEqual(self.runtime.scope.root, self.root.resolve())
-        for agent in (CODE_LOG_VERIFIER, PATCH_GENERATOR):
+        for agent in (CODE_LOG_VERIFIER, PATCH_GENERATOR, SDC_ANALYZER):
             self.assertFalse(get_agent(agent).client_access)
 
     def test_the_verifier_reads_a_real_file(self):
