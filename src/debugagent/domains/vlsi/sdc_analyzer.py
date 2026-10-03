@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .findings import VlsiFinding
+from .identity import canonical_identity
 from .provenance import Provenance, _errors_to_raise, _reject_unknown_keys
 from .sdc_parser import ParseIssue, SdcParseResult
 
@@ -94,6 +95,16 @@ def _definition_fields(clock: Any) -> tuple[str, str, str, tuple[str, ...]]:
 def _line_of(record: Any) -> int | None:
     provenance = getattr(record, "provenance", None)
     return None if provenance is None else provenance.line
+
+
+def _detail_map(details: tuple[tuple[str, str, Any], ...]) -> dict:
+    """The `{key: value}` form of a details tuple, for deriving an identity from it.
+
+    `VlsiFinding` stores each key twice so a non-scalar value cannot be mistaken for a key; this undoes
+    that for reading. Identity is derived from this mapping and the finding keeps the tuples, so both
+    views come from one source.
+    """
+    return {key: value for key, _key, value in details}
 
 
 def _provenance_of(record: Any) -> Provenance:
@@ -216,6 +227,10 @@ def _missing_clock_findings(parsed: SdcParseResult, provided: dict[str, list[Any
         if not clock or clock in provided:
             continue
         direction = "Input" if kind == "set_input_delay" else "Output"
+        details = (("clock", "clock", clock),
+                   ("constraint", "constraint", kind),
+                   ("constraint_kind", "constraint_kind", getattr(constraint, "KIND", "")),
+                   ("objects", "objects", _LINE_SEPARATOR.join(getattr(constraint, "objects", ()) or ())))
         findings.append(VlsiFinding(
             kind="missing_constraint",
             severity="critical",
@@ -224,10 +239,10 @@ def _missing_clock_findings(parsed: SdcParseResult, provided: dict[str, list[Any
             provenance=_provenance_of(constraint),
             # Details are written in sorted key order, matching what the foundation's parse boundary would
             # produce. Emitting them unsorted would make `to_dict()` differ from a parsed round trip.
-            details=(("clock", "clock", clock),
-                     ("constraint", "constraint", kind),
-                     ("constraint_kind", "constraint_kind", getattr(constraint, "KIND", "")),
-                     ("objects", "objects", _LINE_SEPARATOR.join(getattr(constraint, "objects", ()) or ()))),
+            details=details,
+            # Generated HERE, from the same facts, rather than derived downstream by a comparison layer
+            # that would become a second interpretation of this analyzer.
+            identity=canonical_identity("missing_constraint", _detail_map(details)),
         ))
     return findings
 
@@ -246,27 +261,37 @@ def _clock_name_findings(provided: dict[str, list[Any]]) -> list[VlsiFinding]:
         periods = _LINE_SEPARATOR.join(sorted({field[0] for field in fields}))
 
         if identical:
+            details = (("clock", "clock", name),
+                       ("lines", "lines", lines),
+                       ("occurrences", "occurrences", len(definitions)))
             findings.append(VlsiFinding(
                 kind="duplicate_constraint",
                 severity="warning",
                 message=(f"Clock '{name}' is defined {len(definitions)} times with the same period "
                          f"and targets."),
                 provenance=_provenance_of(definitions[1]),
-                details=(("clock", "clock", name),
-                         ("lines", "lines", lines),
-                         ("occurrences", "occurrences", len(definitions))),
+                details=details,
+                # `lines` and `occurrences` are deliberately not in this identity: both change when the
+                # duplicate is removed, which is the repair. The clock is the condition.
+                identity=canonical_identity("duplicate_constraint", _detail_map(details)),
             ))
         else:
+            details = (("clock", "clock", name),
+                       ("lines", "lines", lines),
+                       ("occurrences", "occurrences", len(definitions)),
+                       ("periods", "periods", periods))
             findings.append(VlsiFinding(
                 kind="conflicting_constraint",
                 severity="critical",
                 message=(f"Clock '{name}' is defined {len(definitions)} times with differing periods "
                          f"or targets."),
                 provenance=_provenance_of(definitions[1]),
-                details=(("clock", "clock", name),
-                         ("lines", "lines", lines),
-                         ("occurrences", "occurrences", len(definitions)),
-                         ("periods", "periods", periods)),
+                details=details,
+                # `periods` IS the thing being repaired: '10,12' becomes '10' when it is fixed. `lines`
+                # moves whenever anything above is edited. `occurrences` can fall 3 -> 2 while the clock
+                # is still contradictory. Only `clock` survives, and that is the point: a clock left
+                # contradictory by a partial repair must still be recognised as the same condition.
+                identity=canonical_identity("conflicting_constraint", _detail_map(details)),
             ))
     return findings
 

@@ -200,9 +200,14 @@ class FindingContract(unittest.TestCase):
 
         If someone later adds `recommendation` or `hypothesis`, this test fails. That is the point: the
         boundary should be enforced by the type, and this is the test that enforces the type.
+
+        `identity` joined the set in VLSI-1D.1. It is an OBSERVATION-derived field - a canonical name
+        for the condition the finding reports - so it belongs here and is not one of the proposal fields
+        below. The forbidden intersection assertions are unchanged, which is what keeps this test doing
+        its job.
         """
         self.assertEqual(set(VlsiFinding.FIELDS),
-                         {"kind", "severity", "message", "provenance", "details"})
+                         {"kind", "severity", "message", "provenance", "details", "identity"})
         forbidden = {"hypothesis", "recommendation", "root_cause", "decision", "proposal",
                      "repair", "conclusion", "resolution", "approved"}
         self.assertEqual(set(VlsiFinding.FIELDS) & forbidden, set())

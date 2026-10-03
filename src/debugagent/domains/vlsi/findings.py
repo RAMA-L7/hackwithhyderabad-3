@@ -35,7 +35,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .provenance import Provenance, _errors_to_raise, _reject_unknown_keys, _require_str
+from .identity import canonical_identity, validate_identity
+from .provenance import (Provenance, _errors_to_raise, _reject_unknown_keys,
+                        _require_str)
 
 #: What was observed. A vocabulary, not a class hierarchy: the foundation does not know the analyses
 #: that will produce findings, and inventing an enum for them now would be guessing at VLSI-1.
@@ -128,8 +130,9 @@ class VlsiFinding:
     message: str
     provenance: Provenance
     details: tuple[tuple[str, str, Any], ...] = ()
+    identity: str = ""
 
-    FIELDS = frozenset({"kind", "severity", "message", "provenance", "details"})
+    FIELDS = frozenset({"kind", "severity", "message", "provenance", "details", "identity"})
 
     @property
     def details_dict(self) -> dict:
@@ -141,14 +144,35 @@ class VlsiFinding:
         """Whether this observation knows where it came from. False is reportable, not a defect."""
         return self.provenance.location_known
 
+    def __post_init__(self) -> None:
+        """Derive identity when absent.
+
+        Derived HERE rather than by the analyzer alone, so every `VlsiFinding` carries an identity
+        however it was built - directly, by the analyzer, or by parsing. A type whose identity existed
+        only on some construction paths would compare wrongly on the others, silently.
+
+        A supplied identity is left alone: it was checked for FORM at the parse boundary (see
+        `identity.validate_identity`), which is where a record arrives from outside. Production never
+        supplies one that this would disagree with, because the analyzer derives it from these same
+        details.
+        """
+        if not self.identity:
+            object.__setattr__(self, "identity",
+                               canonical_identity(self.kind, {k: v for k, _k, v in self.details}))
+
     def to_dict(self) -> dict:
-        return {
+        record = {
             "kind": self.kind,
             "severity": self.severity,
             "message": self.message,
             "provenance": self.provenance.to_dict(),
             "details": [[key, value] for key, _key, value in self.details],
         }
+        # Omitted when empty so a finding that predates identity - or one of a kind with no field rule
+        # and no facts to distinguish - does not serialise an empty string that reads as a claim.
+        if self.identity:
+            record["identity"] = self.identity
+        return record
 
     @classmethod
     def from_dict(cls, data: Any, label: str = "VlsiFinding", errors: list[str] | None = None) -> "VlsiFinding":
@@ -166,13 +190,32 @@ class VlsiFinding:
 
         raw_provenance = data.get("provenance")
         provenance = Provenance.from_dict(raw_provenance, f"{label}.provenance", errors)
+        details = _require_details(data.get("details"), f"{label}.details", errors)
+        detail_map = {key: value for key, _key, value in details}
+
+        # Identity is derived from THIS finding's own details, so there is exactly one interpretation of
+        # what a finding is. A caller may supply one - the analyzer always does - and it is checked
+        # against the derived value, which is what stops an identity being attached that the details do
+        # not support.
+        raw_identity = data.get("identity")
+        if raw_identity is None:
+            identity = ""
+        else:
+            before = len(errors)
+            identity = validate_identity(raw_identity, kind=kind, details=detail_map,
+                                         label=label, errors=errors)
+            if len(errors) != before:
+                # Already reported above; let `__post_init__` derive silently so one fault is reported
+                # once, in the error list, rather than as an exception escaping mid-parse.
+                identity = ""
 
         return cls(
             kind=kind,
             severity=_require_severity(data.get("severity"), f"{label}.severity", errors),
             message=_require_str(data.get("message"), f"{label}.message", errors),
             provenance=provenance,
-            details=_require_details(data.get("details"), f"{label}.details", errors),
+            details=details,
+            identity=identity,
         )
 
     @classmethod

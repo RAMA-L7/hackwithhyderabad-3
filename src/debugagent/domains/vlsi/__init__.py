@@ -50,6 +50,11 @@ from debugagent.domains.vlsi.findings import (
     finding_sort_key,
     sort_findings,
 )
+from debugagent.domains.vlsi.identity import (
+    IDENTITY_FIELDS_BY_KIND,
+    canonical_identity,
+    parse_identity,
+)
 from debugagent.domains.vlsi.provenance import (
     DERIVED_REF,
     DERIVED_SOURCE,
@@ -89,6 +94,10 @@ __all__ = [
     "DETAIL_VALUE_TYPES",
     "finding_sort_key",
     "sort_findings",
+    # identity
+    "IDENTITY_FIELDS_BY_KIND",
+    "canonical_identity",
+    "parse_identity",
     # sdc
     "CreateClock",
     "InputDelay",
