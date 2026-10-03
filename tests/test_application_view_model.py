@@ -226,6 +226,268 @@ class TrustLabels(unittest.TestCase):
             self.assertNotIn(verdict, blob)
 
 
+class FailedWorkerTasks(unittest.TestCase):
+    """A task that did not complete must not read as a task that found nothing.
+
+    This is the third instance of the same shape of defect in this panel: it read `finding["message"]`
+    and `finding["provenance"]`, neither of which is a key of `RankedFinding.to_dict()`; and now it read
+    `findings` and `refusals` while ignoring `outcomes`, which is where a worker's failure lives.
+
+    The reported symptom was a Workers panel reading "code / log verifier - no observation reported (1
+    task(s) completed)" for a session whose only task had failed with "target absent". Every word of that
+    line was false: the task completed nothing, it did not complete, and the worker was not the code/log
+    verifier. The record had the truth in `outcomes` the whole time.
+    """
+
+    @staticmethod
+    def _session(outcomes, *, findings=(), summary=None, refusals=()):
+        section = {
+            "findings": list(findings),
+            "refusals": list(refusals),
+            "outcomes": list(outcomes),
+            "summary": summary or {"total": len(outcomes), "joined": True,
+                                   "by_status": {}, "order": []},
+        }
+        return build_view_model(FakeSession(workers={"verifier": section}, trace=["t"]))
+
+    @staticmethod
+    def _failed(task_id="sdc:constraints/top.sdc", agent="sdc_analyzer",
+                detail="target absent: constraints/top.sdc", kind="unavailable"):
+        return {"index": 0, "task_id": task_id, "agent": agent, "status": "failed",
+                "result": {"task_id": task_id, "agent": agent, "status": "failed",
+                           "observations": [], "failure_kind": kind, "failure_detail": detail},
+                "error": None}
+
+    def test_a_failed_task_is_surfaced_with_its_reason(self):
+        panel = self._session([self._failed()]).panel("Workers")
+        text = str(panel.to_dict())
+        self.assertIn("did not complete", text, "a failed task must be visible")
+        self.assertIn("target absent: constraints/top.sdc", text, "and must say why")
+        self.assertIn("unavailable", text, "including the failure kind")
+
+    def test_a_failed_task_does_not_render_as_found_nothing(self):
+        """The exact false claim from the report."""
+        text = str(self._session([self._failed()]).panel("Workers").to_dict())
+        self.assertNotIn("no observation reported", text,
+                         "'found nothing' and 'could not look' must not share a wording")
+
+    def test_a_failed_task_does_not_render_as_task_s_completed(self):
+        text = str(self._session([self._failed()]).panel("Workers").to_dict())
+        self.assertNotIn("task(s) completed", text)
+
+    def test_the_working_worker_is_named_rather_than_assumed(self):
+        """The empty-state label used to hardcode one worker regardless of who actually ran."""
+        text = str(self._session([self._failed()]).panel("Workers").to_dict())
+        self.assertIn("sdc_analyzer", text, "the worker that ran must be named")
+        self.assertNotIn("code / log verifier", text)
+
+    def test_a_clean_run_still_reports_nothing_found(self):
+        """The other direction: a genuinely clean run must NOT be dressed up as a failure."""
+        outcome = {"index": 0, "task_id": "sdc:top.sdc", "agent": "sdc_analyzer",
+                   "status": "success", "result": {"status": "success", "observations": []},
+                   "error": None}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertIn("no observation reported", text)
+        self.assertIn("1 task(s) completed", text)
+        self.assertNotIn("did not complete", text)
+
+    def test_a_section_without_outcomes_is_unaffected(self):
+        """Older and hand-built records carry no `outcomes`; they must behave exactly as before."""
+        model = build_view_model(FakeSession(workers={
+            "verifier": {"findings": [], "summary": {"total": 2, "joined": True}, "refusals": []},
+            "patches": {"proposals": []}}, trace=["t"]))
+        text = str(model.panel("Workers").to_dict())
+        self.assertIn("no observation reported", text)
+        self.assertIn("2 task(s) completed", text)
+
+    def test_findings_and_a_failure_are_shown_together(self):
+        """One target of three failed; the other two produced observations. Both belong in the report."""
+        good = {"ref": "a.log", "content": "saw X", "score": 1, "source": "log:a.log"}
+        panel = self._session([self._failed(task_id="sdc:gone.sdc"),
+                               {"index": 1, "task_id": "sdc:ok.sdc", "agent": "sdc_analyzer",
+                                "status": "success", "result": {"status": "success"}, "error": None}],
+                              findings=[good]).panel("Workers")
+        text = str(panel.to_dict())
+        self.assertIn("saw X", text, "successful observations still shown")
+        self.assertIn("did not complete", text, "the failure is not hidden by the successes")
+        self.assertNotIn("no observation reported", text)
+
+    def test_a_worker_that_died_reports_its_error(self):
+        outcome = {"index": 0, "task_id": "v:crash", "agent": "code_log_verifier",
+                   "status": "error", "result": None, "error": "RuntimeError: worker crashed"}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertIn("did not complete", text)
+        self.assertIn("worker crashed", text)
+
+    def test_a_refusal_keeps_its_own_wording_and_is_not_reported_as_a_failure(self):
+        """`refused` is a rule saying no; `failed` is a thing going wrong. They must stay distinct."""
+        refusal = {"task_id": "v:a.log", "error": "AuthorizationError: denied"}
+        text = str(self._session(
+            [{"index": 0, "task_id": "v:a.log", "agent": "code_log_verifier",
+              "status": "refused", "result": None, "error": "AuthorizationError: denied"}],
+            refusals=[refusal]).panel("Workers").to_dict())
+        self.assertIn("refused", text)
+        self.assertNotIn("did not complete", text,
+                         "a refusal is not a task that failed to complete")
+
+    def test_a_partial_task_is_not_reported_as_a_failure(self):
+        """`partial` ran and reported; it is milder than a task that never looked."""
+        outcome = {"index": 0, "task_id": "sdc:top.sdc", "agent": "sdc_analyzer",
+                   "status": "partial", "result": {"status": "partial"}, "error": None}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertNotIn("did not complete", text)
+        self.assertIn("only partly", text, "but it is still reported, in its own words")
+
+    def test_a_partial_task_does_not_render_as_found_nothing(self):
+        """A partial read is not a clean run, and its observations are NOT among the findings.
+
+        `SubAgentResult.ok` is `status == "success"`, and `rank_findings` is fed only `ok` outcomes, so
+        a partial task's observations never reach this panel at all. Rendering it as "no observation
+        reported (1 task(s) completed)" would therefore be doubly false: it claims a clean run, and it
+        hides observations that exist. This test was written after that exact case was found.
+        """
+        outcome = {"index": 0, "task_id": "sdc:top.sdc", "agent": "sdc_analyzer",
+                   "status": "partial", "result": {"status": "partial"}, "error": None}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertNotIn("no observation reported", text)
+        self.assertNotIn("task(s) completed", text)
+
+    def test_a_partial_task_is_not_given_an_invented_reason(self):
+        """A partial run has nothing to explain; "reported no reason" would be a second false claim."""
+        outcome = {"index": 0, "task_id": "sdc:top.sdc", "agent": "sdc_analyzer",
+                   "status": "partial", "result": {"status": "partial"}, "error": None}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertNotIn("reported no reason", text)
+        self.assertIn("provisional", text)
+
+    def test_partial_findings_alongside_a_clean_sibling_are_both_shown(self):
+        """A successful task's findings render normally even when another task was partial."""
+        good = {"ref": "a.log", "content": "saw X", "score": 1, "source": "log:a.log"}
+        text = str(self._session(
+            [{"index": 0, "task_id": "sdc:half", "agent": "sdc_analyzer", "status": "partial",
+              "result": {"status": "partial"}, "error": None},
+             {"index": 1, "task_id": "sdc:ok", "agent": "sdc_analyzer", "status": "success",
+              "result": {"status": "success"}, "error": None}],
+            findings=[good]).panel("Workers").to_dict())
+        self.assertIn("saw X", text)
+        self.assertIn("only partly", text)
+        self.assertNotIn("no observation reported", text)
+
+    def test_no_failure_reason_is_invented(self):
+        outcome = {"index": 0, "task_id": "v:x", "agent": "code_log_verifier",
+                   "status": "failed", "result": None, "error": None}
+        text = str(self._session([outcome]).panel("Workers").to_dict())
+        self.assertIn("did not complete", text)
+        self.assertIn("reported no reason", text,
+                      "with nothing recorded the panel must say so rather than invent a cause")
+
+
+ISSUE = ("SDC timing constraints are inconsistent: an input delay names an undefined clock "
+         "and core_clk has conflicting definitions\nservice=timing\nregion=local\n"
+         "setup timing fails on the main clock path\n"
+         "max delay violation between core_clk and the registers")
+
+
+class WorkerStageTraceWording(unittest.TestCase):
+    """The progress line must not report a broken stage as a clean one.
+
+    Separate from the panel because it is a different surface with a different consumer: the trace is
+    what an engineer reads to decide whether the worker stage did anything, and "0 finding(s) of 0, 0
+    refusal(s)" is both true and useless when the only task died. Rendered through a real
+    `run_worker_stage` rather than a hand-built dict, so the assertion cannot drift from the record the
+    pipeline actually produces.
+    """
+
+    @staticmethod
+    def _trace_for(files: dict, *, targets):
+        """Capture the REAL line `investigate()` writes, by driving the real `step()` callback.
+
+        Reassembling the wording here would make these tests assert a copy of the logic instead of the
+        logic itself, and an earlier version did exactly that - it kept passing while `investigate()` was
+        mutated. `investigate()` takes `on_step`, so the line can simply be captured rather than
+        reconstructed, and the test then fails if the production string ever diverges.
+        """
+        import sys
+        import tempfile
+
+        if str(Path(__file__).resolve().parents[1] / "tests") not in sys.path:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
+
+        from loop_support import RESOLVED, FakeLLM, FakeMemoryPort, ScriptedEngineer, hyp
+
+        from debugagent.agents.coordinator import Coordinator
+        from debugagent.composition import build_repository_runtime
+        from debugagent.pipeline.investigate import investigate
+        from debugagent.pipeline.normalize import normalize
+        from debugagent.pipeline.recall_match import recall
+        from debugagent.pipeline.types import DebugInput
+
+        lines: list[str] = []
+        raw = DebugInput(description=ISSUE)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, body in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body, encoding="utf-8")
+
+            port = FakeMemoryPort()
+            # The same `recall()` the flow itself uses, so the cited case ids are the ones the pipeline
+            # would really see. Guessing them would make `verify()`'s schema reject the proposal and the
+            # run would stop before the worker stage, which is the line under test.
+            context = recall(port, normalize(raw))
+            cites = [] if context.abstained else [c["case_id"] for c in context.candidates][:1]
+            proposal = {"hypotheses": [
+                hyp(text="an input delay names a clock that is never defined", cites=cites),
+                hyp(text="core_clk is defined twice with different periods", cites=cites)]}
+
+            # One Coordinator for the whole run: a second one over the same client would mean a second
+            # MemoryLane, which `investigate()` refuses for exactly that reason.
+            coordinator = Coordinator()
+            session = investigate(raw, port, FakeLLM(proposal),
+                                  ScriptedEngineer(resolution=RESOLVED),
+                                  coordinator=coordinator,
+                                  repository=build_repository_runtime(root, coordinator=coordinator),
+                                  sdc_targets=targets,
+                                  on_step=lambda s: lines.append(s.trace[-1]))
+
+        verifier = [line for line in lines if line.startswith("verifier:")]
+        assert len(verifier) == 1, f"expected one verifier trace line, got {verifier}"
+        statuses = [o.get("status") for o in session.workers["verifier"]["outcomes"]]
+        return verifier[0].removeprefix("verifier: "), statuses
+
+    def test_a_clean_stage_trace_is_byte_identical_to_before(self):
+        """The clause is purely additive, so a clean run must read exactly as it always did."""
+        line, statuses = self._trace_for(
+            {"constraints/top.sdc":
+             "create_clock -name core_clk -period 10 [get_ports clk]\n"
+             "create_clock -name core_clk -period 12 [get_ports clk]\n"},
+            targets=["constraints/top.sdc"])
+        self.assertEqual(statuses, ["success"])
+        # The counts come from the record rather than being pinned, so the test asserts the SHAPE - no
+        # clause appended, same wording as before - and does not break when the analyzer gains a check.
+        self.assertRegex(
+            line, r"^\d+ finding\(s\) of \d+, 0 refusal\(s\) - observations, not evidence$",
+            "a clean stage must not gain a clause it does not need")
+        self.assertNotIn("did not finish cleanly", line)
+
+    def test_a_failed_task_is_named_in_the_trace(self):
+        line, statuses = self._trace_for({}, targets=["constraints/top.sdc"])
+        self.assertEqual(statuses, ["failed"])
+        self.assertIn("1 task(s) did not finish cleanly", line)
+        self.assertIn("0 finding(s) of 0", line,
+                      "the finding count stays truthful; the clause is additive")
+
+    def test_a_partial_task_is_named_in_the_trace(self):
+        line, statuses = self._trace_for(
+            {"constraints/top.sdc":
+             "create_clock -name core_clk -period 10 [get_ports clk]\ncreate_clock -name\n"},
+            targets=["constraints/top.sdc"])
+        self.assertEqual(statuses, ["partial"])
+        self.assertIn("1 task(s) did not finish cleanly", line)
+
+
 class PanelPresence(unittest.TestCase):
     """Absent, empty, and "found nothing" are three different things."""
 

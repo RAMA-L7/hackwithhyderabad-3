@@ -275,9 +275,19 @@ def investigate(raw: DebugInput, port: MemoryPort, llm, engineer: Engineer, *, s
         s.workers = stage.to_dict()
         if stage.verifier is not None:
             engineer.show(render_worker_verifier(stage.verifier))
+            # A task that failed or errored is neither a finding nor a refusal, so counting only those
+            # two made a stage where the only task died read as "0 finding(s) of 0, 0 refusal(s)" -
+            # true, and indistinguishable from a clean run. `partial` is counted too, and worded as
+            # "did not finish cleanly" rather than "did not complete", because it did run: its findings
+            # are provisional and `rank_findings` withholds them. Appended only when something went
+            # wrong, so every clean run's trace text is byte-identical to before.
+            unfinished = sum(1 for outcome in stage.verifier["outcomes"]
+                             if outcome.get("status") in ("failed", "error", "partial"))
             step(f"verifier: {len(stage.verifier['findings'])} finding(s) of "
                  f"{stage.verifier['findings_total']}, "
-                 f"{len(stage.verifier['refusals'])} refusal(s) - observations, not evidence")
+                 f"{len(stage.verifier['refusals'])} refusal(s)"
+                 + (f", {unfinished} task(s) did not finish cleanly" if unfinished else "")
+                 + " - observations, not evidence")
         if stage.patches is not None:
             rendered = render_patch_proposals(stage.patches)
             if rendered:

@@ -53,7 +53,7 @@ alone, so there is no code path by which a panel could acquire a domain-specific
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 #: The authority a panel's contents speak with. `TRACE` is process, not a claim.
 TRUST_LEVELS = ("KNOWLEDGE", "EVIDENCE", "OBSERVATION", "PROPOSAL", "DECISION", "TRACE")
@@ -445,6 +445,55 @@ def _evidence_panel(session: Any) -> Panel | None:
     return Panel(name="Evidence", trust="EVIDENCE", items=tuple(items), note=note)
 
 
+def _observation_source_label(outcomes: Sequence[Any]) -> str:
+    """Which workers reported, for the "nothing was observed" line.
+
+    Reads the agents out of the record rather than naming one, because a hardcoded name is a claim the
+    panel cannot support: the same channel carries file excerpts and deterministic constraint analysis,
+    so "code / log verifier" was wrong for every run where some other worker took part. When the record
+    names no agent - an older or hand-built section - the old wording stands, because guessing is worse
+    than a slightly stale label.
+    """
+    agents = sorted({str(outcome.get("agent", "") or "") for outcome in outcomes
+                     if str(outcome.get("agent", "") or "")})
+    return ", ".join(agents) if agents else "code / log verifier"
+
+
+def _task_failure_reason(outcome: Any) -> str:
+    """Why one task did not complete, in the worker's own words where it gave any.
+
+    A worker that returns `status="failed"` is not a refusal and produces no observation, so this is the
+    only place its reason survives into the report. A worker that died instead carries an `error`
+    string. Neither is invented: when both are absent the panel says so rather than inventing a cause.
+    """
+    result = outcome.get("result")
+    if isinstance(result, dict):
+        detail = str(result.get("failure_detail") or "").strip()
+        kind = str(result.get("failure_kind") or "").strip()
+        if detail:
+            return f"{kind}: {detail}" if kind else detail
+    error = str(outcome.get("error") or "").strip()
+    return error or "the worker reported no reason"
+
+
+def _unfinished_label(outcome: Any) -> str:
+    """How to describe a task that did not produce a listed observation.
+
+    `failed` and `error` did not complete. `partial` is deliberately NOT given that wording, because it
+    did run and did report - its negative conclusions are provisional, which is a different and milder
+    claim than a task that never looked. It still gets its own line, because its observations are not
+    among the findings below: `rank_findings` is fed only outcomes whose result is `ok`, and `ok` means
+    `status == "success"`, so a partial task's observations never reach the panel at all. Reporting it
+    as a completed task with nothing to say would be the same false claim this panel has now made
+    twice.
+    """
+    status = str(outcome.get("status", "") or "")
+    agent = str(outcome.get("agent", "") or "a worker")
+    if status == "partial":
+        return f"{agent} read this target only partly; its observations are not listed"
+    return f"{agent} did not complete this target ({status or 'failed'})"
+
+
 def _workers_panel(session: Any) -> Panel | None:
     """What the workers contributed. OBSERVATION, with proposals marked as proposals.
 
@@ -481,6 +530,13 @@ def _workers_panel(session: Any) -> Panel | None:
     if isinstance(verifier, dict):
         findings = verifier.get("findings") or []
         summary = verifier.get("summary") or {}
+        outcomes = [o for o in (verifier.get("outcomes") or []) if isinstance(o, dict)]
+        # Tasks whose observations are NOT among the findings below, so the panel must not read as a
+        # clean run. Enumerated as the states that DID go wrong rather than the ones that succeeded, so
+        # a future status is surfaced rather than silently swallowed. `refused` is excluded because a
+        # refusal is a rule saying "no" and is rendered below with its own wording.
+        unlisted = [o for o in outcomes
+                    if str(o.get("status", "")) in ("failed", "error", "partial")]
         if findings:
             for finding in findings:
                 items.append(PanelItem(
@@ -488,11 +544,21 @@ def _workers_panel(session: Any) -> Panel | None:
                     label=str(finding.get("content", "") or ""),
                     value=f"score {finding.get('score', '?')}",
                     source=str(finding.get("source", "") or "")))
-        else:
-            items.append(PanelItem(label="code / log verifier",
+        elif not unlisted:
+            items.append(PanelItem(label=_observation_source_label(outcomes),
                                    detail=f"no observation reported "
                                           f"({summary.get('total', 0)} task(s) completed)",
                                    source="worker"))
+        for outcome in unlisted:
+            partial = str(outcome.get("status", "") or "") == "partial"
+            items.append(PanelItem(
+                ref=str(outcome.get("task_id", "") or ""),
+                label=_unfinished_label(outcome),
+                # A partial run has nothing to explain: its observations exist, they were just not
+                # ranked. Saying "the worker reported no reason" there would be a second false claim.
+                detail=("its findings are provisional and were not ranked for display"
+                        if partial else _task_failure_reason(outcome)),
+                source="worker"))
         refusals = verifier.get("refusals") or []
         for refusal in refusals:
             items.append(PanelItem(ref=str(refusal.get("task_id", "") or ""),
