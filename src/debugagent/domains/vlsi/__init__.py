@@ -48,6 +48,13 @@ from debugagent.domains.vlsi.comparison import (
     RepairVerification,
     compare_sdc_findings,
 )
+from debugagent.domains.vlsi.comparison import (
+    COMPARISON_OUTCOMES,
+    COMPARISON_STATUSES,
+    FindingComparison,
+    RepairVerification,
+    compare_sdc_findings,
+)
 from debugagent.domains.vlsi.findings import (
     DETAIL_VALUE_TYPES,
     FINDING_KINDS,
@@ -67,12 +74,25 @@ from debugagent.domains.vlsi.identity import (
     canonical_identity,
     parse_identity,
 )
+from debugagent.domains.vlsi.identity import (
+    IDENTITY_FIELDS_BY_KIND,
+    canonical_identity,
+    parse_identity,
+)
 from debugagent.domains.vlsi.provenance import (
     DERIVED_REF,
     DERIVED_SOURCE,
     PROVENANCE_SOURCE_TYPES,
     Provenance,
     VlsiContractError,
+)
+from debugagent.domains.vlsi.repair import (
+    REPAIR_OPERATIONS,
+    REPAIR_UNAVAILABLE_REASONS,
+    RenderedSdcRepair,
+    RepairUnavailable,
+    SdcRepair,
+    render_sdc_repair,
 )
 from debugagent.domains.vlsi.sdc import (
     CONSTRAINT_KINDS,
@@ -120,6 +140,23 @@ __all__ = [
     "FindingComparison",
     "RepairVerification",
     "compare_sdc_findings",
+    # identity
+    "IDENTITY_FIELDS_BY_KIND",
+    "canonical_identity",
+    "parse_identity",
+    # comparison
+    "COMPARISON_OUTCOMES",
+    "COMPARISON_STATUSES",
+    "FindingComparison",
+    "RepairVerification",
+    "compare_sdc_findings",
+    # repair
+    "REPAIR_OPERATIONS",
+    "REPAIR_UNAVAILABLE_REASONS",
+    "RenderedSdcRepair",
+    "RepairUnavailable",
+    "SdcRepair",
+    "render_sdc_repair",
     # sdc
     "CreateClock",
     "InputDelay",
